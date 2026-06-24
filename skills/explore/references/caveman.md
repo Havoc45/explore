@@ -36,6 +36,8 @@ The example `--caveman=ultra` means subagents report in the most compressed pros
 - **`sub-continuous` head-doc / blackboard**: the progress map, ledger, and findings-so-far are written caveman-style to keep the continuation state small (it is re-read every resume, so its size is paid repeatedly). The front-matter, handles, and status legend stay literal so resume parsing is unambiguous.
 - **Promotion to the deliverable**: when findings graduate into an ADR or a plan, the orchestrator **expands** them from caveman to `--verbosity`. Caveman is the transport; it never reaches the reader.
 
+One thing caveman compression *does* persist into: the **`agents/` mirror** (`docs/system-design-reference/agents/README.md`, `plans/agents/README.md`). That is a durable, on-disk artifact written in caveman register so agents can re-read architectural context cheaply — distinct from the ephemeral subagent transport here, and written **always** (natively), not gated on this flag. The same inviolable rules apply (evidence verbatim, auto-clarity for risky content). See the SKILL.md "Agent-facing mirror" section.
+
 ## Net effect
 
 `--caveman` lowers the token cost of the parts of a run that scale worst — many subagents, long fan-outs, and the repeatedly-re-read continuation state — without lowering the quality of either the exploration (evidence is preserved exactly) or the deliverable (rebuilt at full verbosity for humans). It pairs naturally with `--sub-continuous` (more exploration per budget window) and with large `--depth=deep` runs (more subagents, each cheaper to hear from).

@@ -298,3 +298,26 @@ Check before finishing — these are the bar the document must clear:
 - **Scaled to the system** — collapsed for small, split-by-context for large; no padding, no omission of a lens the system genuinely exercises.
 - **Reads standalone** — a fresh advisor or a new hire could follow it with no access to this session; no "as discussed above."
 - **The risk map links to plans** (where they exist), so the architecture and the backlog stay connected.
+
+---
+
+## The `agents/` mirror — agent-facing, caveman-compressed
+
+The reference above is written at `--verbosity` for **people**. Beside it, write a compact mirror for **agents** to read instead, so an agent pulling architectural context (during recon, when seeding `--improve`, or when a `--init` primer's pointer is followed) pays a fraction of the tokens:
+
+```
+docs/system-design-reference/
+  README.md, overview.md, architecture.md, ...   ← human, full prose
+  agents/
+    README.md                                     ← agent, caveman-compressed
+```
+
+`docs/system-design-reference/agents/README.md` is a single cheap read covering, in caveman register:
+
+- **Pattern** — the detected pattern + confidence, one line.
+- **Components** — each component, its responsibility in a fragment, and its `file:line` anchor (anchors **verbatim** — they are the payload).
+- **Boundaries & data** — the key interfaces, the trust/ownership boundaries, the main data flows, telegraphically (`X → Y → Z`).
+- **Decisions** — every ADR as a one-to-two-line digest: decision, why, consequence (e.g. `ADR-003: rewrite placeholder in transform — dev/tunnel URL unknown at build — global string replace, see html.ts:xxx`). This is the agent-friendly form of the ADRs; the full ADRs in `decisions/` stay the authoritative human record.
+- **Risks** — the risk-map rows compressed: where, severity, plan link if any.
+
+Rules: it is **always** caveman-compressed (natively — not gated on the `--caveman` flag); it uses the `--caveman` level if one was given, else `full`; `file:line`, symbols, and exact strings stay verbatim; anything where terseness risks a misread (a security risk, an irreversible note) stays plain (auto-clarity). It carries the same generated-at commit as the human README, and a one-line header pointing back to the full reference for when an agent needs the depth. A `--reconcile` refresh regenerates this mirror alongside the human docs; it is never allowed to drift from them.

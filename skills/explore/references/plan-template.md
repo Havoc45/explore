@@ -212,3 +212,11 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 - Would a reviewer reading only "Why this matters" + "Done criteria" understand what they're approving?
 - No secret values anywhere in the file — locations and credential types only.
 - "Planned at" SHA is filled in and the in-scope paths in the drift check match the Scope section.
+
+---
+
+## The `agents/` digest — `plans/agents/README.md`
+
+Alongside the human backlog index (`plans/README.md`), write a compressed `plans/agents/README.md` for an orchestrator to triage the backlog cheaply — per plan: id, a one-fragment statement of what it does, its in-scope paths, its dependencies, and its status, in caveman register. It mirrors the index's status table, not the plan bodies.
+
+**The full plan files are never compressed.** A plan is written for the weakest plausible executor, and its precision *is* its body — the inlined excerpts, the ordered steps, the verification commands, the done criteria. An executor always reads the full `plans/NNN-*.md`; the `agents/` digest is only a navigational layer over the backlog, regenerated whenever plans are added or `--reconcile` runs. (This is why the `agents/` mirror compresses the *reference and the index*, never the executable instructions.)

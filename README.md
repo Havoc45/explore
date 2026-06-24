@@ -49,10 +49,10 @@ Explore the repo in budget-aware resumable mode with subagents talking in cavema
 
 ## What it writes (only these; source is never touched)
 
-- **`docs/system-design-reference/`** — the map: overview, architecture (detected pattern + Mermaid diagrams), data/interfaces, cross-cutting concerns, a risk map, and ADRs capturing the decisions the code embodies.
-- **`plans/`** — handoff plans written for the weakest plausible executor: inlined context, ordered steps with verification gates, hard scope boundaries, machine-checkable done criteria, STOP conditions. Each cites the ADR it descends from.
-- **`docs/explore-head-docs/`** — only in `--sub-continuous`: the continuation checkpoints.
-- **`AGENTS.md` + `CLAUDE.md`** (repo root) — only in `--init`: a lean, model-agnostic agent-context primer (`AGENTS.md`, the cross-tool standard) with `CLAUDE.md` symlinked to it for Claude Code. Curated and short by design — pointers to the map, not a copy of it. With `--caveman`, written compressed (it loads every session).
+- **`docs/system-design-reference/`** — the map: overview, architecture (detected pattern + Mermaid diagrams), data/interfaces, cross-cutting concerns, a risk map, and ADRs capturing the decisions the code embodies. Beside it, **`docs/system-design-reference/agents/README.md`** — the same map and ADRs as a caveman-compressed digest, so an agent pulling context reads the cheap version while humans read the full prose.
+- **`plans/`** — handoff plans written for the weakest plausible executor: inlined context, ordered steps with verification gates, hard scope boundaries, machine-checkable done criteria, STOP conditions. Each cites the ADR it descends from. A compressed **`plans/agents/README.md`** digest mirrors the backlog for orchestrator triage (the full plans stay authoritative).
+- **`docs/explore-head-docs/`** — only in `--sub-continuous`: the continuation checkpoints (no `agents/` mirror — already agent-native).
+- **`AGENTS.md` + `CLAUDE.md`** (repo root) — only in `--init`: a lean, model-agnostic agent-context primer (`AGENTS.md`, the cross-tool standard) with `CLAUDE.md` symlinked to it for Claude Code. Curated and short by design — it points agents at the `agents/` mirrors above, not a copy of the map. With `--caveman`, written compressed (it loads every session).
 
 ## Install
 

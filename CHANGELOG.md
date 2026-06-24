@@ -4,6 +4,18 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.2.0] — 2026-06-24
+
+### Added
+- **Agent-facing `agents/` mirror.** Every action that writes a human-facing reference
+  now also writes a caveman-compressed mirror beside it for agents to read instead of the
+  verbose human ADRs — `docs/system-design-reference/agents/README.md` (pattern, components
+  with verbatim `file:line`, boundaries, ADR digests, risk map) and `plans/agents/README.md`
+  (a backlog digest for triage; full plans stay authoritative). The mirror is always
+  compressed natively (independent of `--caveman`), evidence stays verbatim, and the human
+  docs are unchanged. `--init`'s primer now links the mirror so the next session reads cheap
+  context. `--sub-continuous` is exempt (head-docs are agent-native already).
+
 ## [2.1.1] — 2026-06-24
 
 ### Changed
@@ -56,6 +68,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.2.0]: https://github.com/Havoc45/explore/releases/tag/v2.2.0
 [2.1.1]: https://github.com/Havoc45/explore/releases/tag/v2.1.1
 [2.1.0]: https://github.com/Havoc45/explore/releases/tag/v2.1.0
 [2.0.0]: https://github.com/Havoc45/explore/releases/tag/v2.0.0

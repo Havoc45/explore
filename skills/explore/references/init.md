@@ -17,7 +17,7 @@ Research across real repositories is unambiguous — **developer-curated** `AGEN
 - The few non-obvious conventions (the error pattern, the state pattern, the import-alias rule) — with a one-line pointer to an exemplar file, not the code.
 - Hard constraints that will break things: generated files not to edit (e.g. `snippets/vite-tag.liquid`), directories never to touch (`vendor/`), commands never to run.
 - Domain vocabulary the team uses in names/comments.
-- **Pointers, not contents**: "Architecture map → `docs/system-design-reference/`. Plans → `plans/`. ADRs → `docs/system-design-reference/decisions/`." Never inline the architecture — that is exactly the bloat the research warns against; the map already lives in the reference.
+- **Pointers, not contents**: point agents at the compressed mirror first — "Architecture (agent-optimized) → `docs/system-design-reference/agents/README.md`; full map & ADRs → `docs/system-design-reference/`; plans → `plans/`." Never inline the architecture — that is exactly the bloat the research warns against; the map already lives in the reference, and the `agents/` mirror is the cheap version for agents to read.
 
 **Leave out:** anything a linter enforces, generic language style, a file-tree dump (goes stale fast), and auto-generated prose. If a section would just restate what a competent agent already knows, omit it.
 
@@ -50,8 +50,9 @@ Research across real repositories is unambiguous — **developer-curated** `AGEN
 - **<term>** — <meaning>.
 
 ## Where the deeper context lives
-- Architecture map & ADRs → `docs/system-design-reference/`
-- Implementation plans → `plans/`
+- Architecture (agent-optimized, start here) → `docs/system-design-reference/agents/README.md`
+- Architecture (full human map & ADRs) → `docs/system-design-reference/`
+- Plans → `plans/` (digest at `plans/agents/README.md`)
 - This project is mapped/maintained with the `explore` skill.
 
 <!-- explore:end -->

@@ -4,7 +4,7 @@ description: Explore, understand, and improve a codebase as a senior architect-a
 license: MIT
 metadata:
   author: Havoc45
-  version: "2.1.1"
+  version: "2.2.0"
 ---
 
 # Explore
@@ -87,9 +87,9 @@ Subagents and mechanical analyzers over-report. Before any observation or findin
 
 ### Phase 4 — Document / Plan
 
-**Exploration →** write `docs/system-design-reference/` per `references/system-design-reference.md`: the detected pattern (with confidence), the diagrams that apply (Mermaid, judged not dumped), ADRs (observed vs. existing decisions), and the risk map — all at `--verbosity`. Stamp the index with `git rev-parse --short HEAD`.
+**Exploration →** write `docs/system-design-reference/` per `references/system-design-reference.md`: the detected pattern (with confidence), the diagrams that apply (Mermaid, judged not dumped), ADRs (observed vs. existing decisions), and the risk map — all at `--verbosity`. Stamp the index with `git rev-parse --short HEAD`. Then write the caveman-compressed `docs/system-design-reference/agents/README.md` mirror for agent consumption (see "Agent-facing mirror").
 
-**`--improve` / `--security` / `--plan-once` →** write plans to `plans/` per `references/plan-template.md`, each **for the weakest plausible executor** (all context inlined, ordered steps with verification gates, hard scope boundaries, machine-checkable done criteria, STOP conditions), stamped with the commit, reconciling rather than duplicating an existing `plans/`. **The ADRs are the seam:** a planning run grounds each plan in the relevant ADR (cite it), so the architecture and the backlog stay linked. Present the vetted findings first and (if interactive) ask which become plans; direction ideas are options presented separately.
+**`--improve` / `--security` / `--plan-once` →** write plans to `plans/` per `references/plan-template.md`, each **for the weakest plausible executor** (all context inlined, ordered steps with verification gates, hard scope boundaries, machine-checkable done criteria, STOP conditions), stamped with the commit, reconciling rather than duplicating an existing `plans/`. **The ADRs are the seam:** a planning run grounds each plan in the relevant ADR (cite it), so the architecture and the backlog stay linked. Also write the compressed `plans/agents/README.md` backlog digest (the full plan files stay authoritative). Present the vetted findings first and (if interactive) ask which become plans; direction ideas are options presented separately.
 
 **`--init` →** after recon, write a **lean, curated** `AGENTS.md` primer at the repo root (the commands, conventions, landmines, and pointers an agent can't infer — *not* an architecture dump; auto-generated bloat measurably hurts) and symlink `CLAUDE.md` to it for Claude Code pickup. Update within explore-managed markers if either exists; never clobber hand-written context. With `--caveman`, the primer body is compressed (it loads into every session, so the saving is persistent) with commands/paths/exact strings kept verbatim. Read `references/init.md` before writing it.
 
@@ -112,6 +112,17 @@ Subagents and mechanical analyzers over-report. Before any observation or findin
 ## Caveman — subagent token compression
 
 `--caveman` compresses the *cheap channel between agents* (subagent prompts/reports and `sub-continuous` scratch) to save context and tokens, while the human deliverable stays at `--verbosity`. Evidence (`file:line`, symbols, commands, error strings) stays verbatim; security/irreversible/ambiguous content drops back to plain language (auto-clarity); findings are expanded to verbosity on promotion. Levels and rules: `references/caveman.md`.
+
+## Agent-facing mirror (`agents/`)
+
+Human ADRs are written at `--verbosity` for people — descriptive, and costly for an agent to re-read on demand. So every action that writes a human-facing reference **also** writes a compact, caveman-compressed mirror beside it, in an `agents/` subdirectory, for agents to read *instead* of the human docs:
+
+- exploration / `--reconcile` → `docs/system-design-reference/agents/README.md` — the pattern, components (with `file:line` evidence verbatim), boundaries, data/interfaces, the ADR decisions as one-to-two-line digests, and the risk map, in caveman register. This is what the `--init` primer points agents at, and what `--improve` reads when seeding from the ADRs.
+- `--improve` / `--plan-once` / `--security` → `plans/agents/README.md` — a compressed digest of the backlog (per plan id, what it does, scope, deps, status) for an orchestrator to triage cheaply. The full plan files stay the executor's source of truth and are **not** compressed — a plan's precision *is* its body.
+
+The mirror is **always compressed natively**, independent of the `--caveman` flag (that flag governs ephemeral subagent transport; this is a durable artifact). If `--caveman=<level>` is set the mirror uses that level; otherwise it defaults to `full`. The inviolable caveman rules hold — `file:line`, symbols, commands, and exact strings stay verbatim, and security/irreversible/ambiguous notes stay plain (auto-clarity). The human docs are never altered.
+
+**Exempt:** `--sub-continuous` writes no mirror — its head-docs under `docs/explore-head-docs/` are agent-native already (and already compressed when `--caveman` is on). `--init` writes no mirror either — `AGENTS.md` *is* the agent file; instead its primer links the `agents/` mirrors above so the next session reads the cheap context.
 
 ## Using the bundled analyzers
 
