@@ -1,0 +1,31 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "explore",
+  "description": "Marketplace for the explore plugin \u2014 a read-only senior architect-advisor that maps a codebase into a system design reference and, via feature flags, audits, plans, and reviews.",
+  "owner": {
+    "name": "Havoc45",
+    "url": "https://github.com/Havoc45"
+  },
+  "plugins": [
+    {
+      "name": "explore",
+      "description": "Explore, understand, and improve a codebase as a read-only senior architect-advisor, driven by feature flags. Charts a durable system design reference (diagrams, ADRs, risk map); flags add audit-and-plan, single-task planning, security review, executor dispatch, agent-context init, and budget-aware resumable runs.",
+      "source": "./",
+      "category": "productivity",
+      "keywords": [
+        "architecture",
+        "system-design",
+        "documentation",
+        "diagrams",
+        "adr",
+        "code-audit",
+        "planning",
+        "agents-md",
+        "security",
+        "dependency-analysis",
+        "read-only",
+        "advisor"
+      ]
+    }
+  ]
+}
