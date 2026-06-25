@@ -2,7 +2,7 @@
 
 A Claude Code plugin (and Agent Skill) that explores, understands, and **improves** a codebase as a senior architect-advisor — strictly **read-only** on source, evidence-driven, and driven by **feature flags**.
 
-By default it charts how a system is actually built into a durable system design reference. Flags extend it across the whole advisor lifecycle — audit and plan, plan a single task, security review, dispatch an executor and review its work, refresh against HEAD — and tune any run with depth, verbosity, token-compressed subagent communication, and per-plan model assignment. It never touches your source; every write lands in a `docs/` directory it owns.
+By default it charts how a system is actually built into a durable system design reference. Flags extend it across the whole advisor lifecycle — audit and plan, plan a single task, security review, dispatch an executor and review its work, refresh against HEAD — and tune any run with depth, verbosity, token-compressed subagent communication, and per-plan model assignment. It never touches your source; every write lands in a path it owns — `docs/system-design-reference/`, `plans/`, or (with `--init`) the root agent-context files.
 
 ```
 explore                          → docs/system-design-reference/   (map: diagrams, ADRs, risk map)
@@ -10,7 +10,15 @@ explore --improve                → plans/                     (audit → prior
 explore --execute-level=high 003 → executor subagent (worktree)    (dispatch + review, never merges)
 ```
 
-It folds together three MIT skills: the read-only advisor discipline + audit/plan/execute flows of [improve](https://github.com/shadcn/improve), the architecture lenses + analyzer scripts of senior-architect, and the token-compression convention of [caveman](https://github.com/JuliusBrussee/caveman).
+## Acknowledgements
+
+`explore` exists because of three excellent open-source skills, and it is a synthesis of their authors' work. With genuine thanks to:
+
+- **[shadcn](https://github.com/shadcn)** — for [**improve**](https://github.com/shadcn/improve), whose read-only advisor discipline, audit playbook, plan template, and execute/reconcile flows are the backbone of `explore`'s planning side.
+- **[Alireza Rezvani](https://github.com/alirezarezvani)** — for [**senior-architect**](https://github.com/alirezarezvani/claude-skills), whose architecture lenses, decision matrices, diagram approach, and analyzer scripts power the exploration and charting side.
+- **[Julius Brussee](https://github.com/JuliusBrussee)** — for [**caveman**](https://github.com/JuliusBrussee/caveman), whose token-compression convention drives `--caveman` and the agent-facing mirror.
+
+All three are MIT-licensed; full attribution is in [`NOTICE`](./NOTICE). If you find `explore` useful, please star their repositories too — this builds directly on their ideas.
 
 ## The flags
 
@@ -37,7 +45,11 @@ It folds together three MIT skills: the read-only advisor discipline + audit/pla
 | `--model=<model\|plan:model,…>` | auto | Assign model(s) to subagents/executors; default = orchestrator picks best-fit per plan |
 | `--focus=<area>` | — | Scope exploration to one subsystem; a plan-file argument routes to `--review` |
 | `--sub-continuous[=<handle>\|new]` | — | Budget-aware, resumable, multi-session exploration |
-| `--issues` | — | Also publish plans as GitHub issues (public-repo check first) |
+| `--reference=<path>[,…]` | — | Ingest the maintainer's own docs/notes/specs as ground truth during recon (repeatable) |
+| `--code-mode=<yes\|no>` | `yes` | `yes` = code CLI/harness, full lifecycle incl. execution; `no` = chat, **planning only** (write ADRs + plans, never execute or touch git) |
+| `--branch=<name>` | — | *(code mode)* working branch for execution — checked out if it exists, created if not |
+| `--bypass-pr-create=<yes\|no>` | `no` | *(code mode)* when `yes`, push the branch and open a PR after an approved `--improve` diff; never merges |
+| `--issues` | — | *(code mode)* also publish plans as GitHub issues (public-repo check first) |
 
 Flags chain. A worked example:
 

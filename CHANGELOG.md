@@ -4,6 +4,26 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.3.0] — 2026-06-25
+
+### Added
+- **`--reference=<path>`** — ingest the maintainer's own docs, notes, specs, or glossaries
+  as first-class ground truth during recon (repeatable).
+- **`--code-mode=<yes|no>`** (default `yes`) — declares the surface. `yes` = code CLI/harness
+  (Claude Code), full lifecycle including execution; `no` = chat, **planning only** (write the
+  ADRs and plans, never execute, dispatch, or touch git).
+- **`--branch=<name>`** *(code mode)* — sets the executor's working branch; checked out if it
+  exists, created from HEAD if not.
+- **`--bypass-pr-create=<yes|no>`** (default `no`, code mode) — when `yes`, push the working
+  branch and open a PR after an approved `--improve` diff. Still never merges.
+
+### Changed
+- Hardened the Mermaid diagram guidance against render errors — explicit rules (quote
+  special-character labels, alphanumeric ids, reserved `end`, escape angle brackets, one edge
+  per line, `flowchart` over `graph`) and corrected skeletons that render as-is.
+- Hard Rules 1 & 2 now state the code-mode-only git exceptions (branch creation, push, PR)
+  precisely; `--issues` is likewise marked code-mode only.
+
 ## [2.2.0] — 2026-06-24
 
 ### Added
@@ -68,6 +88,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.3.0]: https://github.com/Havoc45/explore/releases/tag/v2.3.0
 [2.2.0]: https://github.com/Havoc45/explore/releases/tag/v2.2.0
 [2.1.1]: https://github.com/Havoc45/explore/releases/tag/v2.1.1
 [2.1.0]: https://github.com/Havoc45/explore/releases/tag/v2.1.0

@@ -4,7 +4,7 @@ description: Explore, understand, and improve a codebase as a senior architect-a
 license: MIT
 metadata:
   author: Havoc45
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # Explore
@@ -15,8 +15,8 @@ The economics: an expensive, high-ceiling model does the part where intelligence
 
 ## Hard Rules
 
-1. **Never modify source code.** No edits, no fixes, no "quick win while you're in there." The ONLY files you may create or modify are: `docs/system-design-reference/` (the map); **`plans/` at the repo root** (handoff plans; `advisor-plans/` if `plans/` is taken for another purpose) — kept at the root, *not* under `docs/`, so it matches the convention the `improve` skill and its forks use and plans stay portable across tools; in `--sub-continuous` mode, `docs/explore-head-docs/` (continuation state); and, in `--init` mode only, the two root agent-context files `AGENTS.md` and `CLAUDE.md` (the latter a symlink to the former). You own what's inside those; you touch nothing else, including the user's own docs beside them, and an existing `plans/`, `AGENTS.md`, or `CLAUDE.md` is updated/reconciled (within explore-managed markers for the context files), never clobbered. `--execute-level` dispatches a *separate executor subagent* that edits code in an isolated git worktree — you review its diff and render a verdict; you still never edit code yourself, and you never merge, push, or commit to the user's branch.
-2. **Never run commands that mutate the working tree** — no installs, no artifact-writing builds, no git commits, no formatters. Read, search, and read-only analysis only (`tsc --noEmit`, lint in check mode, `npm/pnpm audit`, a cheap side-effect-free test run). Scoped exceptions: verification inside an executor's disposable worktree during `--execute-level`, and `gh issue create` under an explicit `--issues` flag. The bundled analyzer scripts are read-only by default; only ever direct their `--output` into a directory this skill owns.
+1. **Never modify source code.** No edits, no fixes, no "quick win while you're in there." The ONLY files you may create or modify are: `docs/system-design-reference/` (the map); **`plans/` at the repo root** (handoff plans; `advisor-plans/` if `plans/` is taken for another purpose) — kept at the root, *not* under `docs/`, so it matches the convention the `improve` skill and its forks use and plans stay portable across tools; in `--sub-continuous` mode, `docs/explore-head-docs/` (continuation state); and, in `--init` mode only, the two root agent-context files `AGENTS.md` and `CLAUDE.md` (the latter a symlink to the former). You own what's inside those; you touch nothing else, including the user's own docs beside them, and an existing `plans/`, `AGENTS.md`, or `CLAUDE.md` is updated/reconciled (within explore-managed markers for the context files), never clobbered. `--execute-level` dispatches a *separate executor subagent* that edits code in an isolated git worktree — you review its diff and render a verdict; you still never edit code yourself. You never **merge** to the user's branch. By default you also never push or open a PR; the two explicit, code-mode-only exceptions are `--branch=<name>` (which may *create* the working branch if absent) and `--bypass-pr-create=yes` (which, after an approved `--improve` diff, may push that branch and open a PR for human review). Execution, branch creation, push, and PR happen **only in code mode** (`--code-mode=yes`, the default); in chat mode none of them occur.
+2. **Never run commands that mutate the working tree** — no installs, no artifact-writing builds, no git commits, no formatters. Read, search, and read-only analysis only (`tsc --noEmit`, lint in check mode, `npm/pnpm audit`, a cheap side-effect-free test run). Scoped exceptions, all **code-mode only**: verification and the executor's commits inside its disposable worktree during `--execute-level`; `git branch`/`git worktree` creation of a `--branch` target; `git push` of that branch and `gh pr create` under `--bypass-pr-create=yes`; and `gh issue create` under `--issues`. In chat mode (`--code-mode=no`) none of these run — the work stops at written ADRs and plans. The bundled analyzer scripts are read-only by default; only ever direct their `--output` into a directory this skill owns.
 3. **Self-containment.** The reference must read standalone — a human or a fresh run can follow it with no access to this session. Every plan must be self-contained — the executor has not seen this conversation, the audit, or any other plan; "as discussed above" is a broken plan.
 4. **Never reproduce secret values.** Reference the `file:line` and credential *type* only, note it in the risk map / finding, and recommend rotation. The document gets committed; a secret in it is burned. (Subagents receive this rule verbatim.)
 5. **Every claim and finding carries evidence** — a `file:line` (or config/IaC location) behind each component, boundary, decision, and finding. Describe what *is*; mark inferences as inferences; say "unknown / needs measurement" rather than inventing. Recommendations and direction ideas appear only as clearly labelled options the maintainer owns — never directives, never edits.
@@ -50,7 +50,13 @@ Invoked as `explore [flags] ["<description>"]`. With **no action flag**, it expl
 | `--model=<model \| plan:model,…>` | auto | Assign model(s) to dispatched subagents/executors. Default: the orchestrator auto-selects the best-fit model per plan. See "Model & effort". |
 | `--focus=<area>` | — | Scope exploration to one subsystem (`--focus=auth`). A plan-file argument routes to `--review`. |
 | `--sub-continuous[=<handle>\|new]` | — | Budget-aware, resumable, multi-session exploration. See `references/sub-continuous.md`. |
-| `--issues` | — | Also publish written plans as GitHub issues (public-repo safety check first). See `references/closing-the-loop.md`. |
+| `--issues` | — | *(code mode only)* Also publish written plans as GitHub issues (public-repo safety check first). See `references/closing-the-loop.md`. |
+| `--reference=<path>[,<path>…]` | — | Extra context the maintainer has written — design notes, a spec, an API doc, a domain glossary. Ingested as ground truth during recon (Rule 7), cited like any other source. Repeatable. |
+| `--code-mode=<yes\|no>` | `yes` | `yes` (default) assumes a code CLI/harness (e.g. Claude Code) — the full lifecycle including execution is available. `no` assumes a chat surface — **planning only**: explore, audit, and write the ADRs and plans, but never execute, dispatch, or touch git. See "Execution mode". |
+| `--branch=<name>` | — | *(code mode only)* The working branch for execution — checked out if it exists, created from the current HEAD if it doesn't. The executor's worktree and any PR target it. |
+| `--bypass-pr-create=<yes\|no>` | `no` | *(code mode only)* When `yes`, after an `--improve` plan is executed and its diff approved, push the working branch and open a PR for human review. Default `no` keeps the standing rule — no branch is pushed and no PR is opened. Never merges. |
+
+`--code-mode`, `--branch`, and `--bypass-pr-create` accept `y`/`n` as aliases for `yes`/`no`.
 
 ### Composition
 
@@ -65,7 +71,7 @@ explore --verbosity=high --sub-continuous --caveman=ultra --improve "add a webho
 
 ### Phase 1 — Recon & truth-grounding (always; Hard Rule 7)
 
-Scope the architecture and stack, then pull every source of truth: `README`, `CLAUDE.md`/`AGENTS.md`, root configs/manifests, CI, IaC, directory structure; existing design docs and ADRs (ingest as input, carry forward — a recorded tradeoff is *by design*, a stale ADR is itself a finding); the repo's own diagram/doc conventions (match them); git signal for what's evolving. Identify languages, frameworks, package manager, and the exact **build/test/lint/typecheck commands** (they become verification gates in every plan). Use available tool calls and MCP connectors to confirm behaviour you'd otherwise guess. If `docs/system-design-reference/` or `plans/` already exists, this is a **refresh/reconcile** — read them first and update rather than clobber. Optionally seed with the bundled analyzers (read-only). If the repo has no working verification command, "establish a verification baseline" is usually plan #1.
+Scope the architecture and stack, then pull every source of truth: `README`, `CLAUDE.md`/`AGENTS.md`, root configs/manifests, CI, IaC, directory structure; existing design docs and ADRs (ingest as input, carry forward — a recorded tradeoff is *by design*, a stale ADR is itself a finding); **any paths passed via `--reference`** (the maintainer's own notes, specs, or glossaries — treat them as first-class ground truth, still subject to Rule 6, and cite them like any other source); the repo's own diagram/doc conventions (match them); git signal for what's evolving. Identify languages, frameworks, package manager, and the exact **build/test/lint/typecheck commands** (they become verification gates in every plan). Use available tool calls and MCP connectors to confirm behaviour you'd otherwise guess. If `docs/system-design-reference/` or `plans/` already exists, this is a **refresh/reconcile** — read them first and update rather than clobber. Optionally seed with the bundled analyzers (read-only). If the repo has no working verification command, "establish a verification baseline" is usually plan #1.
 
 ### Phase 2 — Explore / Audit (parallel; `--depth`-bounded; `--caveman` comms)
 
@@ -95,7 +101,7 @@ Subagents and mechanical analyzers over-report. Before any observation or findin
 
 ### Phase 5 — Execute & close the loop (`--execute-level`, `--reconcile`)
 
-`--execute-level` dispatches one executor subagent in an isolated worktree at the chosen effort and model, then you review its diff like a tech lead — re-run done criteria, check scope, read the code and the tests — and render APPROVE / REVISE / BLOCK. `--reconcile` verifies DONE plans, investigates BLOCKED ones, refreshes drifted TODOs, and retires dead findings, and re-syncs the reference. Read `references/closing-the-loop.md` before the first dispatch. Merging is always the user's decision — never merge, push, or commit to their branch.
+`--execute-level` dispatches one executor subagent in an isolated worktree at the chosen effort and model — on the `--branch` target (created if absent) or a generated `advisor/<plan-id>` branch — then you review its diff like a tech lead (re-run done criteria, check scope, read the code and the tests) and render APPROVE / REVISE / BLOCK. Under `--bypass-pr-create=yes`, an approved `--improve` diff is pushed and opened as a PR for human review; otherwise nothing is pushed. `--reconcile` verifies DONE plans, investigates BLOCKED ones, refreshes drifted TODOs, retires dead findings, and re-syncs the reference. This whole phase is **code mode only** — in chat mode the work stops at the written plan. Read `references/closing-the-loop.md` before the first dispatch. Merging is always the user's decision — never merge.
 
 ## Model & effort assignment
 
@@ -104,6 +110,21 @@ Subagents and mechanical analyzers over-report. Before any observation or findin
 - **Default (no `--model`): the orchestrator chooses the best-fit model per plan** for the best output at the best efficiency — heavier reasoning (complex refactors, security, ambiguous specs) to a stronger model; mechanical, well-specified work to a cheaper, faster one.
 - `--model=<model>` applies one model to all dispatched subagents; `--model=003:opus,005:sonnet` (or the `<plan:model>` positional, e.g. `--execute-level=high 003:opus`) binds models per plan.
 - **On Claude Code, subagents must be Claude models** (e.g. `opus` / `sonnet` / `haiku`). **On other harnesses, any provider's model** the harness supports may be assigned. State the chosen model per plan so the run is reproducible.
+
+## Execution mode (`--code-mode`) & git workflow
+
+`--code-mode` tells the skill what surface it is running on, because that decides whether it may *do* anything beyond writing documents.
+
+- **`--code-mode=yes` (default) — code CLI / harness** (Claude Code, Cowork, an agent harness). The full lifecycle is available: explore and document, audit and plan, and — when asked — `--execute-level` to dispatch an executor, review the diff, and (under the flags below) push a branch and open a PR. This is the assumed mode because the skill ships primarily as a Claude Code plugin.
+- **`--code-mode=no` — chat** (a plain chat surface like Claude.ai). **Planning only.** The skill explores, audits, and produces the full set of ADRs and plans, and stops there — no subagent dispatch, no execution, no git. If `--execute-level`, `--branch`, or `--bypass-pr-create` are passed in chat mode, the skill says it can't act on them here and delivers the plan instead, so the user can run it in a code surface later. (This is the explicit form of the existing "if the host can't spawn subagents, work directly" fallback — and the safe default for any surface without a real working tree.)
+
+The git workflow (code mode only):
+
+- **Branch.** `--execute-level` always works in an **isolated git worktree**, never the user's checked-out branch. `--branch=<name>` sets the branch that worktree uses: check it out if it exists (`git rev-parse --verify`), create it from the current `HEAD` if it doesn't (`git branch <name>` / `git worktree add`). Without `--branch`, the executor uses a generated `advisor/<plan-id>` working branch.
+- **Commits.** The executor commits its work to the working branch inside the worktree. You review that diff like a tech lead (re-run done criteria, check scope) and render APPROVE / REVISE / BLOCK. You never commit to the user's branch yourself.
+- **PR.** By default **no branch is pushed and no PR is opened** — the user decides what to do with the reviewed branch. Under `--bypass-pr-create=yes`, after an `--improve` plan's diff is approved, push the working branch and open a PR (`gh pr create`) summarising the plan and linking it, for human review. **Never merge** — the PR is the handoff to a human, not past one.
+
+See `references/closing-the-loop.md` for the step-by-step.
 
 ## Verbosity
 

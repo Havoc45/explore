@@ -112,17 +112,27 @@ Three rules keep diagrams useful rather than decorative:
 2. **Legibility caps size.** Past ~15–20 nodes a diagram stops communicating. For a large system, draw the top-level view (bounded contexts / services) and then a separate, deeper diagram per context — never one diagram of everything. A reader should grasp each diagram in a glance.
 3. **Caption and ground every diagram.** One line above or below saying what it shows and what to notice, and the evidence its non-obvious nodes/edges came from (inline, or in the surrounding prose). An uncaptioned diagram makes the reader reverse-engineer your intent.
 
-The five diagram types and minimal skeletons:
+**Syntax that renders (Mermaid).** Most "diagram failed to render" errors are a label or an id the parser chokes on, not a Mermaid bug. Follow these so every diagram renders on GitHub and in the live editor on the first try:
+
+- **Quote any label with special characters.** A bare label breaks the moment it contains a parenthesis, colon, slash, comma, `#`, `&`, percent, or apostrophe — wrap the whole label in double quotes: `A["Success (95%)"]`, `B["Cost: $50"]`, `C["Browser / SPA"]`. Plain words and spaces don't need quotes (`GW[API Gateway]` is fine); the instant a symbol appears, quote it. This applies to node labels, edge labels (`-->|"q=[a,b]"|`), and subgraph titles (`subgraph X["Managed services (prod)"]`).
+- **Node ids are alphanumeric, no spaces, no punctuation.** Put the messy text in the *label*, never the id: `svc1["src/report/dot/index.js"]`, not `src/report/dot/index.js[...]` (slashes and dots in an id break the parse). Ids can't contain spaces; labels can.
+- **`end` is reserved** — never use lowercase `end` as a node id or bare label (it closes a block and corrupts the diagram); capitalise it (`End`) or quote it (`["end"]`). `default` and bare `and`/`or` inside bracketed labels have also been known to trip the parser — quote or rephrase.
+- **Escape angle brackets in labels.** `<` and `>` are read as HTML tags; write `A["List&lt;String&gt;"]` (escaped) so generic types and tag names survive.
+- **One edge per line.** Chained `A --> B --> C` works in current Mermaid but is fragile across renderers and harder to diff — write `A --> B` then `B --> C`. Define subgraphs *before* the edges that cross them, so a node lands inside its subgraph rather than floating outside.
+- **Use `flowchart`, not the older `graph`**, and a valid direction (`TD`/`TB`/`LR`/`BT`/`RL`). In sequence diagrams put each `participant` on its own line and keep aliases plain (`participant Bus as Pub Sub`); in `erDiagram`/`classDiagram` define every entity/class before referencing it in a relationship, and quote relationship labels that contain spaces (`PRODUCT ||--o{ LINE_ITEM : "appears in"`). Keep `%%` comments on their own line.
+- **Verify before shipping a diagram you're unsure of.** Paste it into the live editor (`https://mermaid.live/edit`) — it flags the exact line. A diagram that doesn't render is worse than no diagram.
+
+The five diagram types and minimal skeletons (all render as-is):
 
 **Component view** — modules/services and their relationships.
 ````
 ```mermaid
-graph LR
-    Client[Browser / SPA] --> GW[API Gateway]
+flowchart LR
+    Client["Browser / SPA"] --> GW[API Gateway]
     GW --> Orders[Order Service]
-    Orders --> DB[(PostgreSQL)]
-    Orders --> Cache[(Redis)]
-    Orders -->|publishes| Bus[(Pub/Sub)]
+    Orders --> DB[("PostgreSQL")]
+    Orders --> Cache[("Redis")]
+    Orders -->|publishes| Bus[("Pub/Sub")]
     Worker[Fulfilment Worker] -->|subscribes| Bus
 ```
 ````
@@ -130,34 +140,37 @@ graph LR
 **Layer view** — architectural layers; arrows show dependency direction (inward/downward). A line that points the "wrong" way is a layer violation worth a callout.
 ````
 ```mermaid
-graph TD
+flowchart TD
     subgraph Presentation
         UI[Vue components]
     end
     subgraph Application
-        Svc[Services / use-cases]
+        Svc["Services / use-cases"]
     end
     subgraph Data
         Repo[Repositories]
-        DB[(PostgreSQL)]
+        DB[("PostgreSQL")]
     end
-    UI --> Svc --> Repo --> DB
+    UI --> Svc
+    Svc --> Repo
+    Repo --> DB
 ```
 ````
 
 **Deployment topology** — what runs where, grouped by node/environment.
 ````
 ```mermaid
-graph TB
-    LB[Load Balancer] --> Web
+flowchart TB
+    LB[Load Balancer]
     subgraph Cluster["GKE cluster (us-west4-a)"]
-        Web[web pods ×3]
-        Wkr[worker pods ×2]
+        Web["web pods x3"]
+        Wkr["worker pods x2"]
     end
     subgraph Managed["Managed services"]
-        SQL[(Cloud SQL)]
-        Redis[(Memorystore)]
+        SQL[("Cloud SQL")]
+        Redis[("Memorystore")]
     end
+    LB --> Web
     Web --> SQL
     Web --> Redis
     Wkr --> SQL

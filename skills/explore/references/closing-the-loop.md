@@ -10,8 +10,16 @@
 > `--execute-level=<low|medium|high|max> <plan[:model]>`: the level sets the
 > executor's reasoning effort, and the model comes from `<plan:model>` or
 > `--model` (default: the orchestrator auto-selects the best-fit model per plan —
-> on Claude Code, a Claude model; on other harnesses, any provider's). Everything
-> else below applies unchanged.
+> on Claude Code, a Claude model; on other harnesses, any provider's).
+>
+> **Code mode only.** This entire file applies only when `--code-mode=yes` (the
+> default). In chat mode (`--code-mode=no`) there is no execution, no worktree, and
+> no git — the work stops at the written plan. Two extra knobs apply here:
+> `--branch=<name>` sets the executor's working branch (checked out if it exists,
+> created from `HEAD` if not; otherwise a generated `advisor/<plan-id>` branch is
+> used); and `--bypass-pr-create=yes` permits pushing that branch and opening a PR
+> after an approved `--improve` diff (default: no push, no PR). Everything else
+> below applies unchanged.
 
 ---
 
@@ -79,7 +87,7 @@ Review like a tech lead reviewing a PR against the spec — never fix anything y
 
 | Verdict | When | Action |
 |---|---|---|
-| **APPROVE** | Criteria pass, scope clean, quality holds | Update index status to DONE. Present to the user: diff summary, worktree path and branch, anything from NOTES. **Merging is the user's decision — never merge, push, or commit to their branch.** |
+| **APPROVE** | Criteria pass, scope clean, quality holds | Update index status to DONE. Present to the user: diff summary, worktree path and branch, anything from NOTES. **Merging is always the user's decision — never merge.** By default don't push or open a PR; under `--bypass-pr-create=yes` (an `--improve` run), push the working branch and open a PR (`gh pr create`) that summarises and links the plan, for human review. |
 | **REVISE** | Fixable gaps | SendMessage to the same executor with specific, actionable feedback ("criterion 3 fails: X; the error handling in `api.ts:90` swallows the error — use the Result pattern per the plan"). **Max 2 revision rounds**, then BLOCK. |
 | **BLOCK** | STOP condition hit, scope violated unrecoverably, or revisions exhausted | Mark BLOCKED in the index with the reason. Refine or rewrite the plan with what was learned. Tell the user what happened and what changed in the plan. |
 
