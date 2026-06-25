@@ -1,6 +1,6 @@
 {
   "name": "explore",
-  "version": "2.1.1",
+  "version": "2.3.0",
   "description": "Explore, understand, and improve a codebase as a read-only senior architect-advisor, driven by feature flags. Charts a durable system design reference (diagrams, ADRs, risk map) by default; flags add audit-and-plan (--improve), single-task planning (--plan-once), security review (--security), plan review (--review), executor dispatch (--execute-level), and budget-aware resumable runs (--sub-continuous) \u2014 tunable with --depth, --verbosity, --caveman, and --model.",
   "author": {
     "name": "Havoc45",
