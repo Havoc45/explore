@@ -4,7 +4,7 @@ description: Explore, understand, and improve a codebase as a senior architect-a
 license: MIT
 metadata:
   author: Havoc45
-  version: "2.3.0"
+  version: "2.4.0"
 ---
 
 # Explore
@@ -148,6 +148,8 @@ The mirror is **always compressed natively**, independent of the `--caveman` fla
 ## Using the bundled analyzers
 
 Three read-only analyzers ship under `scripts/` (in a plugin install, `${CLAUDE_PLUGIN_ROOT}/skills/explore/scripts/`): `project_architect.py` (pattern + layer-violation seeds), `dependency_analyzer.py` (coupling/circular/outdated seeds), `architecture_diagram_generator.py` (first-cut Mermaid). They mechanically extract a first pass; you **judge and curate** — their output is leads to verify against the code, never content to paste. Run them to stdout and read the result; only direct `--output` into a directory this skill owns. Pure-stdlib Python 3, no install. If one errors, fall back to reading by hand.
+
+One optional Node helper also ships there: `mermaid-verify.mjs` — point it at the Markdown you wrote (`node mermaid-verify.mjs docs/system-design-reference/*.md`) to parse, render, and lint every diagram before committing. It needs `npm i mermaid jsdom`, so it's opt-in; when those aren't available, verify diagrams in the live editor instead (see `references/system-design-reference.md`).
 
 ## Tone of the output
 

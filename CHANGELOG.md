@@ -4,6 +4,23 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.4.0] — 2026-06-25
+
+### Added
+- **Bundled Mermaid verifier** (`skills/explore/scripts/mermaid-verify.mjs`, optional, needs
+  `npm i mermaid jsdom`). It goes beyond `mermaid.parse()` — it parses *and renders* every
+  diagram in strict and loose mode and lint-checks the documented escaping rules, with a
+  non-zero exit code for CI/pre-commit gating.
+
+### Fixed
+- **Diagram guidance was wrong for sequence diagrams.** Escaping is diagram-specific:
+  flowchart/class/ER use HTML entities (`&lt;`/`&gt;`), but in **sequence diagrams** a `;`
+  terminates the statement — so HTML entities (which contain `;`) break them. Sequence
+  diagrams must use mermaid entity codes (`#60;`, `#62;`, `#38;`, `#59;`, `#35;`). The
+  guidance in `system-design-reference.md` now states both correctly.
+- Regenerated the `shopify-vite` reference diagrams to the current `flowchart` keyword;
+  all verified rendering clean.
+
 ## [2.3.0] — 2026-06-25
 
 ### Added
@@ -88,6 +105,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.4.0]: https://github.com/Havoc45/explore/releases/tag/v2.4.0
 [2.3.0]: https://github.com/Havoc45/explore/releases/tag/v2.3.0
 [2.2.0]: https://github.com/Havoc45/explore/releases/tag/v2.2.0
 [2.1.1]: https://github.com/Havoc45/explore/releases/tag/v2.1.1
