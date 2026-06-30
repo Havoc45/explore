@@ -4,6 +4,20 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.5.0] — 2026-06-25
+
+### Added
+- **Execution principles (the executor's contract)** — five principles governing the
+  executor dispatched by `--execute-level`, harmonised with the Hard Rules so they don't
+  collide across recon → reconcile: handle uncertainty by type (ask if costly-to-reverse,
+  experiment if it's a "does it work" question), most-direct-solution without weakening
+  existing behaviour, stay in scope, suggest better ways (bounded), and end with a full
+  accounting. The key harmonisation: principle 1(b)'s "run an experiment" is bounded by
+  Hard Rule 2 — read-only outside the worktree, free inside the executor's disposable one.
+- The executor dispatch preamble now carries these principles plus Hard Rules 4 & 6
+  verbatim, and the report format gained NOT DONE / ASSUMPTIONS / SMELLS lines; the diff
+  review now explicitly checks for silently weakened behaviour and carries SMELLS forward.
+
 ## [2.4.0] — 2026-06-25
 
 ### Added
@@ -105,6 +119,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.5.0]: https://github.com/Havoc45/explore/releases/tag/v2.5.0
 [2.4.0]: https://github.com/Havoc45/explore/releases/tag/v2.4.0
 [2.3.0]: https://github.com/Havoc45/explore/releases/tag/v2.3.0
 [2.2.0]: https://github.com/Havoc45/explore/releases/tag/v2.2.0

@@ -1,17 +1,27 @@
 <!--
   Vendored & adapted from the `improve` skill (https://github.com/shadcn/improve),
   MIT © shadcn. Reused here under MIT. See ../../../NOTICE.
-  Adaptation: plan output directory is `plans/` (not repo-root `plans/`).
+  Adaptation: plan output directory is `plans/` at the repo root (not `docs/plans/`).
 -->
 
 > **How `explore` uses this.** This is the output spec for plans written by the
 > `--improve`, `--plan-once`, and `--security` actions — the analogue of
 > `system-design-reference.md` for the planning side. Plans live in
-> **`plans/`**. The prose density of a plan follows `--verbosity` (terse →
-> descriptive), but the *evidence, exact paths, commands, and done-criteria are
-> never trimmed* regardless of verbosity — an executor needs them in full. When
-> `--improve` runs after exploration, ground each plan in the relevant ADR from
-> `docs/system-design-reference/` (cite it in "Why this matters").
+> **`plans/`** at the repo root. The prose density of a plan follows
+> `--verbosity` (terse → descriptive), but the *evidence, exact paths, commands,
+> and done-criteria are never trimmed* regardless of verbosity — an executor
+> needs them in full. When `--improve` runs after exploration, ground each plan
+> in the relevant ADR from `docs/system-design-reference/` (cite it in "Why this
+> matters").
+>
+> **A plan is where the execution principles (SKILL.md) are pre-loaded.** The
+> "Scope / out of scope" section draws the boundary principle 3 holds; the
+> out-of-scope list is also where you forbid weakening existing behaviour
+> (principle 2 — e.g. "do not remove the existing validation to simplify");
+> "STOP conditions" are how principle 1(a) costly-to-reverse uncertainty halts
+> the executor instead of guessing; and any cheap-to-reverse interpretation the
+> plan makes is stated as a recorded assumption. Write the plan so a zero-context
+> executor following it cannot help but obey those principles.
 
 ---
 
