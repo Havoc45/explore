@@ -4,6 +4,16 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.6.0] — 2026-06-25
+
+### Added
+- **`--plan-list` / `--ls`** — a fast, read-only dashboard that prints one status table of
+  every plan (number, description, severity, priority, status) and stops. It skips recon and
+  exploration and never reads full plan bodies: it renders from cached context if the plans
+  were already read this session, otherwise from the cheapest index (`plans/agents/README.md`
+  digest, then `plans/README.md`), so it costs almost nothing. The plan index and the
+  compressed digest now carry a status table whose columns match the flag.
+
 ## [2.5.0] — 2026-06-25
 
 ### Added
@@ -119,6 +129,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.6.0]: https://github.com/Havoc45/explore/releases/tag/v2.6.0
 [2.5.0]: https://github.com/Havoc45/explore/releases/tag/v2.5.0
 [2.4.0]: https://github.com/Havoc45/explore/releases/tag/v2.4.0
 [2.3.0]: https://github.com/Havoc45/explore/releases/tag/v2.3.0

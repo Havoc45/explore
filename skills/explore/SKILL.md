@@ -4,7 +4,7 @@ description: Explore, understand, and improve a codebase as a senior architect-a
 license: MIT
 metadata:
   author: Havoc45
-  version: "2.5.0"
+  version: "2.6.0"
 ---
 
 # Explore
@@ -41,6 +41,7 @@ Invoked as `explore [flags] ["<description>"]`. With **no action flag**, it expl
 | `--execute-level=<low\|medium\|high\|max> <plan[:model]>` | Dispatch an executor subagent on a plan at the chosen effort, review its diff, render a verdict | executor worktree · `references/closing-the-loop.md` |
 | `--reconcile` | Refresh `docs/system-design-reference/` and verify/relink `plans/` against `HEAD` | both · `references/system-design-reference.md`, `references/closing-the-loop.md` |
 | `--init` | Write a lean, curated `AGENTS.md` agent-context primer at the repo root and symlink `CLAUDE.md` to it, so any future session (in any tool) knows the commands, constraints, and where the map lives | `AGENTS.md` + `CLAUDE.md` · `references/init.md` |
+| `--plan-list` / `--ls` | Print a compact status table of every plan in `plans/` — number, description, severity, priority, status. A read-only query that **skips the workflow** and reads from cached context or the plan index only (never full plan bodies). | stdout · "Listing plans" below |
 
 ### Modifier flags (how the run behaves)
 
@@ -68,6 +69,25 @@ Flags chain. The natural lifecycle is `[--sub-continuous] explore → [--improve
 explore --verbosity=high --sub-continuous --caveman=ultra --improve "add a webhook ingest endpoint"
 ```
 → explore the repo in budget-aware resumable mode, with subagents talking in caveman-ultra to stretch the quota; write **high-verbosity** ADRs to `docs/system-design-reference/`; then `--improve` audits and writes plans to `plans/`, each grounded in the ADRs — **plus** a plan for the described webhook task, since a `"<description>"` was supplied.
+
+### Listing plans (`--plan-list` / `--ls`)
+
+A fast, read-only dashboard of the plan backlog. It **does not run recon or exploration** and it **never reads full plan bodies** — it prints one table and stops:
+
+| # | Description | Severity | Priority | Status |
+|---|-------------|----------|----------|--------|
+| 001 | Add a typecheck script as a verification gate | — (dx) | P2 | TODO |
+| 002 | Align the Node version contract | MED | P2 | TODO |
+| 003 | Extract non-plugin helpers out of `html.ts` | MED | P2 | TODO |
+
+Source, cheapest first (stop at the first that answers):
+
+1. **Cached context** — if the plans or the plan index were already read earlier this session, render the table straight from memory; do no file I/O at all. This is the common case and the reason the flag is cheap.
+2. **The compressed digest** `plans/agents/README.md` — it already carries `# · description · severity · priority · status` (see the agent-mirror digest), so one small read fills the table.
+3. **The human index** `plans/README.md` — read its status table.
+4. **Only if there is no index**, read each `plans/NNN-*.md`'s `## Status` block header (Priority, Risk→severity, Category) and its index status — headers only, not bodies.
+
+Severity is the severity of the finding/risk the plan addresses (`HIGH`/`MED`/`LOW`, or `—` with the category for non-risk work like DX). If `plans/` doesn't exist, say so in one line and point at `--improve` / `--plan-once`. Print the table with no preamble or analysis — the point is a glance, not a report.
 
 ## Workflow
 

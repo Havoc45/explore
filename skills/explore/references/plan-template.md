@@ -225,8 +225,24 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 
 ---
 
+## The backlog index — `plans/README.md`
+
+The human-facing index. However you present the findings, include a **status table** whose columns are a superset of `--plan-list`'s so that flag (and any reader) gets everything at a glance:
+
+```
+| #   | Description                         | Severity | Priority | Effort | Depends on | Status |
+|-----|-------------------------------------|----------|----------|--------|------------|--------|
+| 001 | Add a typecheck script (type gate)  | — (dx)   | P2       | S      | —          | TODO   |
+| 002 | Align the Node version contract     | MED      | P2       | S      | —          | TODO   |
+```
+
+- **#** is the plan number; **Description** is the plan title in a few words; **Severity** is the severity of the finding/risk the plan addresses (`HIGH`/`MED`/`LOW`, or `—` plus the category for non-risk work like `dx`); **Priority** is the plan's `P0`–`P3`; **Status** is `TODO`/`IN PROGRESS`/`DONE`/`BLOCKED (reason)`/`REJECTED (rationale)`. Effort and Depends-on are extra columns that help sequencing.
+- This table is the single source of truth for plan status. When an executor finishes (or `--reconcile` runs), the Status cell here is what changes — keep it and the compressed `plans/agents/README.md` digest in sync so `--plan-list` is correct from either.
+
+---
+
 ## The `agents/` digest — `plans/agents/README.md`
 
-Alongside the human backlog index (`plans/README.md`), write a compressed `plans/agents/README.md` for an orchestrator to triage the backlog cheaply — per plan: id, a one-fragment statement of what it does, its in-scope paths, its dependencies, and its status, in caveman register. It mirrors the index's status table, not the plan bodies.
+Alongside the human backlog index (`plans/README.md`), write a compressed `plans/agents/README.md` for an orchestrator to triage the backlog cheaply. Lead with a status table whose columns match `--plan-list` — **`# · description · severity · priority · status`** — so `--ls` can fill its table from this one small file; follow it, if useful, with the per-plan in-scope paths and dependencies. All in caveman register. It mirrors the index's status table, not the plan bodies.
 
 **The full plan files are never compressed.** A plan is written for the weakest plausible executor, and its precision *is* its body — the inlined excerpts, the ordered steps, the verification commands, the done criteria. An executor always reads the full `plans/NNN-*.md`; the `agents/` digest is only a navigational layer over the backlog, regenerated whenever plans are added or `--reconcile` runs. (This is why the `agents/` mirror compresses the *reference and the index*, never the executable instructions.)

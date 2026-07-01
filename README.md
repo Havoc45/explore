@@ -34,6 +34,7 @@ All three are MIT-licensed; full attribution is in [`NOTICE`](./NOTICE). If you 
 | `--execute-level=<low\|medium\|high\|max> <plan[:model]>` | Dispatch an executor subagent on a plan, review its diff, render a verdict |
 | `--reconcile` | Refresh the reference and verify/relink plans against `HEAD` |
 | `--init` | Write a lean, curated `AGENTS.md` agent-context primer at the repo root + symlink `CLAUDE.md` to it (so any tool's next session knows the commands, landmines, and where the map is) |
+| `--plan-list` / `--ls` | Print a compact status table of all plans (number, description, severity, priority, status) — cached-first, reads only the plan index, never full bodies |
 
 **Modifier flags** (how the run behaves — combine freely):
 
