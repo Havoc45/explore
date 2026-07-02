@@ -1,10 +1,10 @@
 ---
 name: explore
-description: Explore, understand, and improve a codebase as a senior architect-advisor — strictly read-only, evidence-driven, and driven by feature flags. By default it charts the architecture into a durable system design reference (diagrams, ADRs, a risk map). Flags extend it across the advisor lifecycle — audit-and-plan (--improve), single-task planning (--plan-once), security review (--security), plan review (--review), executor dispatch (--execute-level), and budget-aware resumable runs (--sub-continuous) — tunable with --depth, --verbosity, --caveman (token-compressed subagent communication), and --model. Use when asked to explore, map, diagram, or document a system's architecture; write ADRs; audit a codebase; find bugs, security, performance, or tech-debt issues; produce prioritized implementation plans for other agents to execute; plan a described task; or assess and document how a system is built. Never edits source code — its only writes are documentation and plans the maintainer owns.
+description: Explore a codebase as a read-only senior architect-advisor and chart it into a durable system design reference (diagrams, ADRs, risk map); feature flags extend the one command across the advisor lifecycle — audit-and-plan (--improve), one-task planning (--plan-once), security review (--security), plan review (--review), executor dispatch (--execute-level), backlog upkeep (--reconcile), agent-context init (--init), plan listing (--plan-list), budget-aware resumable runs (--sub-continuous). Use when asked to explore, map, or document a system's architecture; audit a codebase for bugs, security, performance, or tech debt; produce self-contained implementation plans another agent can execute; or write an AGENTS.md primer. Never edits source code — writes only documentation and plans the maintainer owns.
 license: MIT
 metadata:
   author: Havoc45
-  version: "2.6.0"
+  version: "2.7.0"
 ---
 
 # Explore
@@ -38,7 +38,7 @@ Invoked as `explore [flags] ["<description>"]`. With **no action flag**, it expl
 | `--plan-once "<description>"` | Skip the audit; investigate just enough and write one plan for a known task | `plans/` · `references/plan-template.md` |
 | `--security` | Audit + plan, **security category only** | `plans/` · `references/audit-playbook.md` §2 |
 | `--review=<plan-file>` | Critique an existing plan against the template and tighten it | edits that plan · `references/plan-template.md` |
-| `--execute-level=<low\|medium\|high\|max> <plan[:model]>` | Dispatch an executor subagent on a plan at the chosen effort, review its diff, render a verdict | executor worktree · `references/closing-the-loop.md` |
+| `--execute-level=<auto\|low\|medium\|high\|max> <plan[:model]>` | Dispatch an executor subagent on a plan at the chosen effort (`auto` = the orchestrator sets it per plan), review its diff, render a verdict | executor worktree · `references/closing-the-loop.md` |
 | `--reconcile` | Refresh `docs/system-design-reference/` and verify/relink `plans/` against `HEAD` | both · `references/system-design-reference.md`, `references/closing-the-loop.md` |
 | `--init` | Write a lean, curated `AGENTS.md` agent-context primer at the repo root and symlink `CLAUDE.md` to it, so any future session (in any tool) knows the commands, constraints, and where the map lives | `AGENTS.md` + `CLAUDE.md` · `references/init.md` |
 | `--plan-list` / `--ls` | Print a compact status table of every plan in `plans/` — number, description, severity, priority, status. A read-only query that **skips the workflow** and reads from cached context or the plan index only (never full plan bodies). | stdout · "Listing plans" below |
@@ -52,7 +52,7 @@ Invoked as `explore [flags] ["<description>"]`. With **no action flag**, it expl
 | `--caveman[=<lite\|full\|ultra\|wenyan-…>]` | `full` (when bare) | Compress **subagent ↔ orchestrator** traffic and `sub-continuous` scratch to save context/tokens; the human deliverable stays at `--verbosity`. See `references/caveman.md`. |
 | `--model=<model \| plan:model,…>` | auto | Assign model(s) to dispatched subagents/executors. Default: the orchestrator auto-selects the best-fit model per plan. See "Model & effort". |
 | `--focus=<area>` | — | Scope exploration to one subsystem (`--focus=auth`). A plan-file argument routes to `--review`. |
-| `--sub-continuous[=<handle>\|new]` | — | Budget-aware, resumable, multi-session exploration. See `references/sub-continuous.md`. |
+| `--sub-continuous[=<handle>\|new]` | — | Budget-aware, resumable, multi-session exploration — paces subagents against the live quota (throttle ladder); on hitting paid credits it drains in-flight work, checkpoints, and stops, never continuing on credits without explicit consent. See `references/sub-continuous.md`. |
 | `--issues` | — | *(code mode only)* Also publish written plans as GitHub issues (public-repo safety check first). See `references/closing-the-loop.md`. |
 | `--reference=<path>[,<path>…]` | — | Extra context the maintainer has written — design notes, a spec, an API doc, a domain glossary. Ingested as ground truth during recon (Rule 7), cited like any other source. Repeatable. |
 | `--code-mode=<yes\|no>` | `yes` | `yes` (default) assumes a code CLI/harness (e.g. Claude Code) — the full lifecycle including execution is available. `no` assumes a chat surface — **planning only**: explore, audit, and write the ADRs and plans, but never execute, dispatch, or touch git. See "Execution mode". |
@@ -97,7 +97,7 @@ Scope the architecture and stack, then pull every source of truth: `README`, `CL
 
 ### Phase 2 — Explore / Audit (parallel; `--depth`-bounded; `--caveman` comms)
 
-Go deep, using the companion references: the exploration lenses from `references/architecture-patterns.md`, `references/system-design-workflows.md`, and `references/tech-decision-guide.md`; and, when an `--improve`/`--security` action is in play, the audit categories and Finding format from `references/audit-playbook.md`. Fan out parallel read-only subagents (in Claude Code: **Explore** agents) — one per lens / category / package. Each subagent prompt must include the **absolute path** to the relevant reference section, the recon facts that scope it, an instruction to return evidence-cited observations/findings only (no fixes, no file dumps), and **a verbatim copy of Hard Rules 4 and 6**. If the host can't spawn subagents (e.g. Claude.ai), work directly, lens by lens.
+Go deep, using the companion references: the exploration lenses from `references/architecture-patterns.md`, `references/system-design-workflows.md`, and `references/tech-decision-guide.md`; and, when an `--improve`/`--security` action is in play, the audit categories and Finding format from `references/audit-playbook.md`. Fan out parallel read-only subagents (in Claude Code: **Explore** agents) — one per lens / category / package. Each subagent prompt must include the **absolute path** to the relevant reference section, the recon facts that scope it, an instruction to return evidence-cited observations/findings only (no fixes, no file dumps), and **a verbatim copy of Hard Rules 4 and 6**. Dispatch and monitoring follow the **org chart** ("Delegation & oversight"): brief workers with one task each, put managers over subsystems on `deep`/monorepo runs, read the heartbeats, and recall a spiraling agent up the escalation ladder rather than letting it churn. If the host can't spawn subagents (e.g. Claude.ai), work directly, lens by lens.
 
 Depth, model, caveman, and budget shape this phase: `--depth` sets breadth (table below); `--model` / the default picks each subagent's model; `--caveman` compresses what subagents send back (evidence stays verbatim); `--sub-continuous` bounds the fan-out by the live usage budget rather than the fixed caps and checkpoints it.
 
@@ -111,7 +111,7 @@ Whatever the level, record what was *not* explored/audited.
 
 ### Phase 3 — Vet
 
-Subagents and mechanical analyzers over-report. Before any observation or finding is recorded, **open the cited code yourself and confirm it**. Three failure classes: **by-design** behaviour read as a problem (a documented ADR tradeoff is settled; honoring `https_proxy` is a convention, not SSRF); **mis-attributed evidence** (right observation, wrong location); and **duplicates**. A diagram node, a risk-map row, or a finding with no confirmed evidence does not ship. Record rejected findings so the next run doesn't re-audit them.
+Subagents and mechanical analyzers over-report. Before any observation or finding is recorded, **open the cited code yourself and confirm it**. (On manager runs — see "Delegation & oversight" — the owning manager performs this confirmation for its workers' findings, and you spot-check a sample before recording; everywhere else the confirmation is yours.) Three failure classes: **by-design** behaviour read as a problem (a documented ADR tradeoff is settled; honoring `https_proxy` is a convention, not SSRF); **mis-attributed evidence** (right observation, wrong location); and **duplicates**. A diagram node, a risk-map row, or a finding with no confirmed evidence does not ship. Record rejected findings so the next run doesn't re-audit them.
 
 ### Phase 4 — Document / Plan
 
@@ -127,11 +127,27 @@ Subagents and mechanical analyzers over-report. Before any observation or findin
 
 ## Model & effort assignment
 
-`--execute-level=<low|medium|high|max>` sets the **executor's reasoning effort** for an `--execute-level` run. Model assignment:
+`--execute-level=<auto|low|medium|high|max>` sets the **executor's reasoning effort** for an `--execute-level` run. `auto` hands the choice to the orchestrator, plan by plan, made with the same judgment as the model auto-pick below: mechanical, well-specified work runs at `low`/`medium`; cross-cutting refactors, security work, and ambiguous specs at `high`/`max`. Model assignment:
 
 - **Default (no `--model`): the orchestrator chooses the best-fit model per plan** for the best output at the best efficiency — heavier reasoning (complex refactors, security, ambiguous specs) to a stronger model; mechanical, well-specified work to a cheaper, faster one.
 - `--model=<model>` applies one model to all dispatched subagents; `--model=003:opus,005:sonnet` (or the `<plan:model>` positional, e.g. `--execute-level=high 003:opus`) binds models per plan.
-- **On Claude Code, subagents must be Claude models** (e.g. `opus` / `sonnet` / `haiku`). **On other harnesses, any provider's model** the harness supports may be assigned. State the chosen model per plan so the run is reproducible.
+- **On Claude Code, subagents must be Claude models** (e.g. `opus` / `sonnet` / `haiku`). **On other harnesses, any provider's model** the harness supports may be assigned. State the chosen model **and effort** per plan so the run is reproducible.
+
+Model and effort are two halves of one decision — *who* does the work and *how hard they think*. The **org chart** below is the rule for making it.
+
+## Delegation & oversight — the org chart
+
+Every dispatch — Phase-2 explorers, `--execute-level` executors, any sub-subagent a manager spawns — follows one **org chart**, and the orchestrator runs it like a CEO: it holds the end goal and the whole map, and it never stops watching.
+
+- **CEO — the orchestrator, the strongest model in the run.** Understands, judges, decides, assembles. Decisions — architecture, approach, scope, verdicts — never leave this tier for a cheaper one, with one carve-out: a manager may decide *within* its delegated subsystem, in the direction the CEO set.
+- **Managers — strong models that own long-horizon subtasks.** On a large run (a `deep` audit, a multi-package monorepo, a `--sub-continuous` campaign), a manager owns a subsystem or category end-to-end: it knows the direction and the end goal, divides the work, spawns workers, merges and vets their results, and reports one combined result up.
+- **Workers — cheap, fast models, one well-specified task each**: clear goal, inlined context, machine-checkable done criteria, STOP conditions. A worker doesn't need the whole picture, but every worker brief carries the **raise-hand rule** — if the task as specified seems to point the wrong way, stop and say so rather than complete it wrongly.
+
+**Capability economics — weak models execute, strong models decide.** A senior at $100/hour who finishes in 10 hours costs less than a junior at $10/hour who takes 200 — and open-ended reasoning is where the junior takes 200. Never assign a judgment call ("decide the approach", "choose the architecture") down the chart; a cheap model handed one tends to **spiral** — reasoning in circles, burning tokens without converging (the same files re-read, check-ins that restate instead of advance; **any two spiral signals together = a spiral** — the authoritative signal list is in `references/delegation.md`). **Break a spiral early — never feed it.** Recall the agent, narrow the brief and retry once; if it still spirals, hand the *decision* one rung up to a stronger model at **low effort** (it needs judgment, not hours), then re-dispatch the narrowed task downward. The cheapest token is the one a spiraling agent never burns.
+
+**Steering — dispatch is not fire-and-forget.** Every agent emits **heartbeats** the orchestrator actually reads: the per-lens returns of Phase 2, the claim board and per-agent blocks of the `--sub-continuous` blackboard, the executor's STATUS report and REVISE replies in Phase 5. On each heartbeat the CEO asks: advancing? still aimed at the end goal? still needed? — and steers: narrow, redirect, reassign, escalate a spiral, or stop work no longer needed. Use direct agent messaging where the harness has it, but the durable record of every steer lands in the head-doc ledger or the plan's status — never only in volatile messages.
+
+Full mechanics — the role table, worker-brief requirements, spiral thresholds, the escalation ladder, the steering protocol: `references/delegation.md`.
 
 ## Execution mode (`--code-mode`) & git workflow
 
@@ -192,10 +208,14 @@ Three read-only analyzers ship under `scripts/` (in a plugin install, `${CLAUDE_
 
 One optional Node helper also ships there: `mermaid-verify.mjs` — point it at the Markdown you wrote (`node mermaid-verify.mjs docs/system-design-reference/*.md`) to parse, render, and lint every diagram before committing. It needs `npm i mermaid jsdom`, so it's opt-in; when those aren't available, verify diagrams in the live editor instead (see `references/system-design-reference.md`).
 
+## Platform adaptation
+
+The skill body names **actions** — dispatch a subagent, read the usage signal, open a PR — never one harness's tool names; map each action to your host's native equivalent (on Claude Code: the Agent/Explore tools, `/usage` + `/context`, `gh`). The degradations are already specified where they matter: no subagent dispatch → work lens by lens (Phase 2); no usage signal → the `sub-continuous` fixed-cap fallback; no working tree or git surface → chat mode (`--code-mode=no`). Per-harness install paths are in the repo `README.md`.
+
 ## Tone of the output
 
 You are advising, not selling. State what you found plainly with evidence, mark inferences and unknowns honestly, prefer a legible map over an exhaustive one and a short list of high-leverage plans over a padded one. "Not worth doing" is a valid verdict — record it with a line of reasoning. Every recommendation stays a labelled option the maintainer owns.
 
 ## Credits & license
 
-MIT. `explore` synthesizes the read-only advisor discipline, audit playbook, plan template, and execute/reconcile flows of the **improve** skill (© shadcn); the architecture lenses, decision matrices, diagram approach, and analyzer scripts of the **senior-architect** skill (© Alireza Rezvani); and the token-compression convention of the **caveman** skill (© Julius Brussee). All three are MIT — see `NOTICE` for attribution detail.
+MIT. `explore` synthesizes the read-only advisor discipline, audit playbook, plan template, and execute/reconcile flows of the **improve** skill (© shadcn); the architecture lenses, decision matrices, diagram approach, and analyzer scripts of the **senior-architect** skill (© Alireza Rezvani); and the token-compression convention of the **caveman** skill (© Julius Brussee). Its multi-harness install layout and version tooling are adapted from the **superpowers** plugin (© Jesse Vincent). All four are MIT — see `NOTICE` for attribution detail.

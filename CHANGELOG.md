@@ -4,6 +4,57 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.7.0] — 2026-07-02
+
+### Added
+- **`--execute-level=auto`** — the orchestrator sets the executor's reasoning effort per
+  plan, with the same judgment as the model auto-pick: mechanical, well-specified work →
+  `low`/`medium`; cross-cutting refactors, security, ambiguous specs → `high`/`max`. The
+  chosen model *and* effort are stated per plan for reproducibility.
+- **Delegation & oversight — the org chart** (new SKILL.md section +
+  `references/delegation.md`). Every dispatch follows one hierarchy: the CEO (orchestrator,
+  strongest model) holds the end goal and all judgment; managers (strong models) own
+  long-horizon subtasks on `deep`/monorepo/campaign runs; workers (cheap, fast models) get
+  one self-contained task each with the raise-hand rule. Capability economics made explicit
+  (weak models execute, strong models decide — the $100/h senior beats the $10/h junior on
+  reasoning), with **spiral detection** (signals: re-reads, restating check-ins, unmoved
+  progress map), an **escalation ladder** (narrow-once → escalate the *decision* to a
+  stronger model at low effort → re-dispatch → CEO takes it), and a **steering protocol**
+  (heartbeats read on every interim signal; narrow/redirect/reassign/escalate/stop, durably
+  recorded). The `--execute-level` REVISE loop now escalates a spiraling executor instead
+  of burning the second revision round.
+- **`--sub-continuous` pacing: the throttle ladder & the credits guard.** The budget is
+  re-read after *every* unit (not just the first), the burn rate re-projected, and
+  concurrency stepped down in one-way rungs (full fan-out → halve → single-file → drain →
+  checkpoint) instead of hitting the reserve cliff. "Pause" always means *drain* — in-flight
+  subagents finish their unit rather than being killed mid-way. When the included quota is
+  exhausted and the plan would spill into paid overage credits, the session drains,
+  checkpoints, reports the reset time, and stops — continuing on credits requires the
+  user's explicit same-session consent, and credits are never counted as headroom.
+- **Multi-harness installability** (patterned on obra/superpowers). Per-harness manifests:
+  `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.kimi-plugin/plugin.json`
+  (with a Kimi tool mapping), `gemini-extension.json` + `GEMINI.md` (extension-declared
+  context pointer), and a root `package.json` declaring the skills for pi. A new
+  **Platform adaptation** SKILL.md section states the actions-not-tools rule and the
+  specified degradations. README gains per-harness install docs (Claude Code, Factory
+  Droid, Copilot CLI, Gemini CLI, Kimi Code, Codex/Cursor, Antigravity, pi, standalone).
+  Explore ships no hooks and needs no session-start bootstrap — ports are manifests +
+  discovery only.
+- **Version-bump tooling** — `scripts/bump-version.sh` + `.version-bump.json` (adapted from
+  superpowers, MIT © Jesse Vincent — see NOTICE §4; rewritten for python3/perl, no jq, and
+  YAML-frontmatter support for SKILL.md). Keeps all 8 declared version fields in lockstep:
+  `<X.Y.Z>` bumps them, `--check` detects drift, `--audit` greps the repo for undeclared
+  stragglers. `.claude-plugin/marketplace.json` now carries the plugin version too.
+
+### Changed
+- SKILL.md frontmatter description pruned — duplicate trigger phrasings collapsed, modifier
+  flag list dropped (always-loaded context cost cut, triggers kept one-per-branch).
+- `commands/explore.md` collapsed to a thin pointer at the skill's command surface —
+  previously it restated every flag, so each new flag had to be edited twice (two sources
+  of truth); SKILL.md is now the single source.
+- `closing-the-loop.md` executor-model line fixed: it said "default `sonnet`",
+  contradicting SKILL.md's orchestrator-best-fit default — now defers to the org chart.
+
 ## [2.6.0] — 2026-06-25
 
 ### Added
@@ -129,6 +180,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.7.0]: https://github.com/Havoc45/explore/releases/tag/v2.7.0
 [2.6.0]: https://github.com/Havoc45/explore/releases/tag/v2.6.0
 [2.5.0]: https://github.com/Havoc45/explore/releases/tag/v2.5.0
 [2.4.0]: https://github.com/Havoc45/explore/releases/tag/v2.4.0

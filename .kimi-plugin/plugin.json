@@ -1,0 +1,31 @@
+{
+  "name": "explore",
+  "version": "2.7.0",
+  "description": "Read-only senior architect-advisor: charts a codebase into a durable system design reference (diagrams, ADRs, risk map); feature flags add audit-and-plan, security review, executor dispatch, and budget-aware resumable runs.",
+  "author": {
+    "name": "Havoc45"
+  },
+  "homepage": "https://github.com/Havoc45/explore",
+  "license": "MIT",
+  "keywords": [
+    "architecture",
+    "system-design",
+    "adr",
+    "code-audit",
+    "planning",
+    "read-only",
+    "advisor"
+  ],
+  "skills": "./skills/",
+  "skillInstructions": "Kimi Code tool mapping for the explore skill:\n\n- When the skill says to dispatch a read-only exploration subagent (Phase 2 lens work), use Kimi Code's `Agent` tool with `subagent_type: \"explore\"`.\n- When the skill dispatches the executor under --execute-level, use `Agent` with `subagent_type: \"coder\"` and paste the full plan text plus the executor preamble into `prompt`.\n- When the skill refers to the usage signal (/usage, /context), use whatever quota or context indicator Kimi Code exposes; if none exists, follow the skill's fixed-cap fallback in references/sub-continuous.md.\n- Use Kimi Code's `Read`, `Grep`, `Glob`, `Bash`, `FetchURL`, and `TodoList` tools by their exposed names for the corresponding actions.\n- When the skill refers to the `Skill` tool, use Kimi Code's native `Skill` tool.",
+  "interface": {
+    "displayName": "Explore",
+    "shortDescription": "Read-only architect-advisor: system design reference, audits, and executable plans",
+    "developerName": "Havoc45",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Havoc45/explore"
+  }
+}

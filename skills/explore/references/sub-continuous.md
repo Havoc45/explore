@@ -17,12 +17,33 @@ Either ceiling approaching its reserve triggers a checkpoint. (Related Claude Co
 
 ## The budget pre-flight (run first, every session)
 
-1. **Read the budget.** `/usage` → `remaining%` and reset time; `/context` → context headroom. Record both in the head-doc ledger.
+1. **Read the budget.** `/usage` → `remaining%` and reset time; `/context` → context headroom. Record both in the head-doc ledger — plus whether the plan is already in **overage/credits** territory (see the credits guard below; if so, this session doesn't start units at all).
 2. **Hold back a reserve.** Checkpointing a context-heavy session is *not* free (writing the head-doc and any partial drafts costs tokens), so reserve headroom and stop starting new units once you cross it:
    - `CHECKPOINT_RESERVE` — default **20%** of the quota window (raise it for big repos, where the checkpoint write is larger).
    - `CONTEXT_RESERVE` — default **15%** of the context window.
 3. **Estimate per-unit cost conservatively, then calibrate.** You usually can't see per-token cost, so estimate in `/usage` percentage points. After the **first** unit completes, re-read `/usage`; the delta is your measured per-unit cost. Use it to decide how many more units fit before the reserve: `affordable_units ≈ (remaining% − CHECKPOINT_RESERVE) / measured_cost_per_unit`. Round **down**.
 4. **Concurrency caution.** Parallel subagents all draw from the *same* pool, so N concurrent agents burn the rolling window ~N× faster even though total quota cost is similar. If the rolling window (not total quota) is the binding constraint, prefer **fewer concurrent agents per session** — concurrency buys wall-clock speed, not quota, and can trip the rate limit sooner. The budget, not the standard Phase-2 caps (≤4 / ≤8), sets concurrency here.
+
+## Pacing — the throttle ladder & the credits guard
+
+The pre-flight is not a one-shot estimate. **Re-read the budget after every unit**, not only the first: recalibrate the measured per-unit cost, recompute `affordable_units`, and project when the reserve will be hit at the current burn rate. Budget reads are nearly free; a mis-paced session is not.
+
+**The throttle ladder.** As the projection approaches the reserve, slow down in steps instead of running full speed into a cliff:
+
+1. **Full fan-out** — the projection clears the reserve comfortably: run the session's planned concurrency.
+2. **Halve concurrency** — the projection lands within ~2 units of the reserve: stop launching parallel batches; halve the concurrent subagents.
+3. **Single-file** — within ~1 unit of the reserve: one unit at a time, budget re-read between each.
+4. **Drain** — the next unit no longer fits: start nothing new; let in-flight subagents *finish their current unit* (killing them mid-unit wastes everything they already burned), then vet what completed. "Pause" in this mode always means drain, never kill.
+5. **Checkpoint & stop** — write the head-doc and end the session, per the session loop.
+
+Rungs are one-way within a session — never re-accelerate on a single optimistic read. Record every step-down (and why) in the ledger: a paced session that stopped early must say so.
+
+**The credits guard.** Some plans spill into **paid overage credits / pay-as-you-go** once the included quota window is exhausted. The quota window is the budget this mode manages; credits are the user's wallet, and spending it is never this skill's call:
+
+- Detect it at pre-flight and at every re-read: quota exhausted (or the usage surface reporting overage/extra-usage billing active) while the session could technically continue → you are **on credits**.
+- On credits, jump straight to **drain → checkpoint → stop**, whatever rung you were on. The drain and the checkpoint write are the one sanctioned spend on credits — the minimal cost of not losing the campaign record (a killed session with no checkpoint wastes *everything* already spent). Report the reset time from the usage signal and tell the user the campaign resumes with `explore --sub-continuous` in the refreshed window — the head-doc makes the resume seamless. If the harness can schedule or defer a resume until the reset time, offer that.
+- Continue on credits **only** if the user explicitly says so *in this session, after being told* — a standing config or an earlier yes doesn't carry.
+- Never count credits as headroom in `affordable_units` — the estimate always ends at the included quota.
 
 ## Decompose into checkpointable units
 
@@ -71,6 +92,7 @@ updated: 2026-06-23T13:20:00+08:00
 | 1 | 38% remaining (resets 16:40) | 70% free | components, layers, data-flow | components ✓, layers ✓, data-flow ◐ | hit 20% checkpoint reserve |
 
 Measured cost/unit this session: ~9% per lens (calibrated after unit 1).
+Pacing events: stepped to rung 2 (halved concurrency) after unit 2 — projection within 2 units of reserve; drain + checkpoint after unit 3.
 
 ## Progress map  ← the resumable state
 | Unit (lens / package) | Status | Evidence captured | Promoted to reference? |
@@ -108,12 +130,13 @@ Status legend: pending · claimed:<agent-id> · in-progress · partial · done
 ## The session loop
 
 ```
-pre-flight (read /usage, /context; set reserves)
+pre-flight (read /usage, /context; set reserves; credits check)
   └─ resume? read HEAD / passed handle → load head-doc → verify vs current commit
 allocate units for this session = affordable_units (rounded down), highest-leverage first
-explore each allocated unit:  fan out (budget-bounded) → vet (Phase 3) → record into head-doc
-when remaining% ≤ CHECKPOINT_RESERVE  OR  context ≤ CONTEXT_RESERVE  OR  units exhausted:
-  └─ checkpoint: update progress map, ledger, findings-so-far, open threads; write head-doc + HEAD; STOP
+explore each allocated unit:  fan out (throttle-ladder-bounded) → vet (Phase 3) → record into head-doc
+  └─ re-read /usage + /context → recalibrate cost/unit, re-project → step the ladder down if needed
+when remaining% ≤ CHECKPOINT_RESERVE  OR  context ≤ CONTEXT_RESERVE  OR  on credits  OR  units exhausted:
+  └─ drain in-flight → checkpoint: update progress map, ledger, findings-so-far, open threads; write head-doc + HEAD; STOP
 ```
 
 The checkpoint write is the **last** thing the session does, while it still has the reserve — so it can never be cut off mid-write, which would corrupt the only record of the campaign.

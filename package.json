@@ -1,0 +1,21 @@
+{
+  "name": "explore",
+  "version": "2.7.0",
+  "description": "Read-only senior architect-advisor skill: system design reference, audits, and executable plans",
+  "keywords": [
+    "pi-package",
+    "architecture",
+    "system-design",
+    "adr",
+    "code-audit",
+    "planning",
+    "read-only",
+    "advisor"
+  ],
+  "license": "MIT",
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  }
+}

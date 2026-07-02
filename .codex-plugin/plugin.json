@@ -1,0 +1,33 @@
+{
+  "name": "explore",
+  "version": "2.7.0",
+  "description": "Read-only senior architect-advisor: charts a codebase into a durable system design reference (diagrams, ADRs, risk map); feature flags add audit-and-plan, single-task planning, security review, executor dispatch, and budget-aware resumable runs.",
+  "author": {
+    "name": "Havoc45",
+    "url": "https://github.com/Havoc45"
+  },
+  "homepage": "https://github.com/Havoc45/explore",
+  "repository": "https://github.com/Havoc45/explore",
+  "license": "MIT",
+  "keywords": [
+    "architecture",
+    "system-design",
+    "adr",
+    "code-audit",
+    "planning",
+    "read-only",
+    "advisor"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Explore",
+    "shortDescription": "Read-only architect-advisor: system design reference, audits, and executable plans",
+    "developerName": "Havoc45",
+    "category": "Coding",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Havoc45/explore"
+  }
+}

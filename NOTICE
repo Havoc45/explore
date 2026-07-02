@@ -1,7 +1,8 @@
 explore
 =======
 
-The `explore` skill/plugin is a synthesis of three MIT-licensed open-source works.
+The `explore` skill/plugin is a synthesis of three MIT-licensed open-source works,
+with multi-harness install layout and version tooling adapted from a fourth.
 It is itself distributed under the MIT License (see LICENSE).
 
 This NOTICE records the third-party material it incorporates, as the MIT License
@@ -53,8 +54,8 @@ SOFTWARE.
 `explore` derives its read-only advisor discipline, Hard Rules, evidence rule,
 recon→audit/explore→vet→produce workflow, and subagent fan-out pattern from the
 `improve` skill, and **vendors and adapts** three of its reference documents
-(plan output directory changed from `plans/` to `docs/plans/`, plus
-explore-context headers):
+(plan output directory kept at `plans/` at the repo root, matching `improve`'s
+own convention, plus explore-context headers):
 
   - skills/explore/references/plan-template.md       (vendored & adapted)
   - skills/explore/references/audit-playbook.md      (vendored)
@@ -93,6 +94,40 @@ convention is described in explore's own words in
 verbatim. This notice is included as attribution and good practice.
 
 MIT License — Copyright (c) 2026 Julius Brussee
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+4. superpowers  —  © 2025 Jesse Vincent
+   Source: https://github.com/obra/superpowers
+================================================================================
+
+`explore`'s multi-harness installability follows the layout of the
+`superpowers` plugin (per-harness manifests: .codex-plugin/, .cursor-plugin/,
+.kimi-plugin/, gemini-extension.json + context file, pi fields in
+package.json), and its version tooling is **adapted** from it:
+
+  - scripts/bump-version.sh    (adapted — rewritten for python3/perl instead
+        of jq, plus YAML-frontmatter version support)
+  - .version-bump.json         (same config convention)
+
+MIT License — Copyright (c) 2025 Jesse Vincent
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

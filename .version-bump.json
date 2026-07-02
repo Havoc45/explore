@@ -1,0 +1,22 @@
+{
+  "files": [
+    { "path": ".claude-plugin/plugin.json", "field": "version" },
+    { "path": ".claude-plugin/marketplace.json", "field": "plugins.0.version" },
+    { "path": ".codex-plugin/plugin.json", "field": "version" },
+    { "path": ".cursor-plugin/plugin.json", "field": "version" },
+    { "path": ".kimi-plugin/plugin.json", "field": "version" },
+    { "path": "gemini-extension.json", "field": "version" },
+    { "path": "package.json", "field": "version" },
+    { "path": "skills/explore/SKILL.md", "field": "metadata.version" }
+  ],
+  "audit": {
+    "exclude": [
+      "CHANGELOG.md",
+      "HANDOVER.md",
+      ".version-bump.json",
+      "bump-version.sh",
+      "node_modules",
+      ".git"
+    ]
+  }
+}
