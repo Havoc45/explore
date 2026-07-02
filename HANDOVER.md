@@ -120,7 +120,9 @@ Havoc45 (Hazim): frontend + DevOps, Comfort Works (Shopify / Vue3 / Tailwind4 / 
 
 ## Next steps / open
 - **Repo is PRIVATE** — make public before advertising git-URL installs (Gemini/Kimi/pi/Antigravity all install from the GitHub URL).
-- Marketplace listings for Codex App / Cursor (manifests ready).
+- Marketplace listings (**BLOCKED on private repo** — both require public source; manifests ready):
+  - **Codex**: PR to `github.com/openai/plugins` adding `plugins/explore/` w/ `.codex-plugin/plugin.json` (superpowers automates this w/ a fork-sync script `scripts/sync-to-codex-plugin.sh` — copyable pattern).
+  - **Cursor**: valid `.cursor-plugin/plugin.json` (have it) → repo public → submit repo link at `cursor.com/marketplace/publish` (Cursor team reviews; logo in repo recommended). Until listed, Cursor/Codex users install from local path.
 - Candidates never done: `--execute-level` dry run on a real plan (show executor contract + review loop end-to-end); GitHub Actions workflow validating manifests + running `bump-version.sh --check` on push.
 - OpenCode support = write in-process JS plugin (skills registration) — deliberate skip so far.
-- Tags: only `v2.7.0` exists (created this session). CHANGELOG links v1.0.0–v2.6.0 are dead — no older tags anywhere; backfill candidates from `git log --oneline` (`17610fc`=2.6.0, `28f010b`=2.5.0, `e27b355`=2.4.0) if wanted.
+- Tags: `v2.1.1`, `v2.3.0`–`v2.7.0` exist (backfilled at the commit whose *manifest* carries each version — commit messages lag manifests by one: `17610fc` says "update 2.6.0" but its plugin.json = 2.5.0; the real 2.6.0 manifest landed in `cda1a78` "update"). v1.0.0–v2.2.0 predate the repo → no tags, their CHANGELOG headings intentionally unlinked.
