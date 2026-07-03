@@ -6,7 +6,7 @@ How the orchestrator staffs, watches, and steers every dispatch. The economics i
 
 | Rung | Model tier | Carries | Returns |
 |---|---|---|---|
-| **CEO** (the orchestrator) | the strongest model in the run | the end goal, the whole map, all judgment | decisions, verdicts, the assembled deliverable |
+| **CEO** (the orchestrator) | the session model — the run's judgment tier, never offloaded | the end goal, the whole map, all judgment | decisions, verdicts, the assembled deliverable |
 | **Manager** | strong — near-CEO capability | one subsystem / category / campaign leg, end-to-end, *plus* the direction and end goal | one merged, vetted, combined result — and any question a worker raised that it couldn't settle |
 | **Worker** | cheap, fast, good at one thing | **one task**: clear goal, inlined context, machine-checkable done criteria, STOP conditions — *not* the whole picture | evidence-cited observations, or a diff plus the full accounting |
 
@@ -27,6 +27,98 @@ A senior at $100/hour who finishes in 10 hours costs $1,000; a junior at $10/hou
 - Long-horizon coordination, merging, subsystem judgment → strong model, `medium`/`high` effort.
 - Final judgment, verdicts, assembly → the CEO, always.
 - **A strong model at low effort beats a weak model at max effort on any judgment call** — judgment needs capability, not hours. This is the escalation ladder's engine.
+
+## The model roster & routing
+
+Capability economics says *which rung*; the roster says *which model* — and the roster is not limited to the harness's own models. Two dispatch lanes:
+
+- **Native subagents** — the harness's own dispatch surface (on Claude Code: the Agent/Explore tools), running the harness's own models. On Claude Code that means Claude models — `sonnet` / `opus` / `fable` aliases.
+- **Provider-CLI runners** *(code mode only)* — other providers' models reached through their CLIs installed on the host (e.g. `codex` → OpenAI models, `opencode` → OpenRouter-served models such as GLM), dispatched as sandboxed, non-interactive shell runs. This lane works on *any* harness that can run commands. Detect availability during recon (`command -v codex opencode`) and note in the run record which lanes this run has.
+
+**The roster.** Shipped defaults — treat cost as *what the operator actually pays* (subscriptions, included limits), not list price; re-rank to your own billing, and re-score a model after a few real runs. Higher = better on every axis (cost higher = cheaper). Intelligence = how hard a problem the model takes unsupervised; taste = UI/UX, code quality, API design, copy.
+
+| Model | Lane | Cost | Intelligence | Taste |
+|---|---|---|---|---|
+| gpt-5.5 | `codex` CLI | 9 | 8 | 5 |
+| glm-5.2 xhigh | `opencode` CLI | 8 | 7 | 5 |
+| sonnet-5 | native | 6 | 5 | 7 |
+| opus-4.8 | native | 4 | 8 | 8 |
+| fable-5 | native / the session itself | 2 | 9 | 9 |
+
+*(glm-5.2 scores are provisional — calibrate after first use. On a harness whose native models differ, substitute its own tiers at the same rungs.)*
+
+**Routing rules** — the CEO applies these when staffing the chart:
+
+1. **Quota preservation.** The session model's quota is the scarcest budget in the run — spend it only where intelligence compounds: orchestration, judgment, vetting, verdicts, assembly. Worker-tier units (lens sweeps, audit categories, well-specified execution, mechanical analysis) go to a provider-CLI lane whenever one is installed; native subagents are the worker-tier *fallback*, not the default.
+2. **Defaults, not limits.** Standing permission to escalate: judge the output, not the price tag. A cheaper model's return that doesn't meet the bar is redone one tier up without asking — escalating costs less than shipping mediocre work (the escalation ladder already encodes this).
+3. **Intelligence > taste > cost** when axes conflict for anything that ships; cost is a tie-breaker only.
+4. **Bulk/mechanical work** (clear-spec execution, migrations, data analysis, lens sweeps) → gpt-5.5. glm-5.2 xhigh is the second bulk lane — an independent perspective, or the substitute when `codex` is absent or its limits exhausted.
+5. **Anything user-facing** (UI, copy, API design) needs taste ≥ 7 — a native Claude tier.
+6. **Verdicts and reviews stay with the CEO.** Optionally commission one independent second-opinion review from a *different provider* (read-only CLI run) — advisory input to the verdict, never the verdict itself.
+7. **Never staff Haiku.** The cheap tier is a CLI lane — or sonnet-5 at low effort when no CLI is installed.
+
+**Rung staffing with the roster:**
+
+| Rung | Default staffing |
+|---|---|
+| CEO | the session model — never offloaded |
+| Manager | opus-4.8 (native); fable-5 for the hardest campaign legs |
+| Worker | gpt-5.5 (`codex`) or glm-5.2 xhigh (`opencode`); sonnet-5 when no CLI lane exists |
+| Executor | per plan: mechanical, well-specified → a CLI lane; taste-sensitive or user-facing diffs → opus-4.8 / sonnet-5 native |
+
+**Dispatch mechanics** (verified command shapes; adjust model ids to the host's config):
+
+Read-only worker — Phase-2 lens, audit category, second-opinion review:
+
+```bash
+codex exec --json -s read-only -C <repo-root> -c model_reasoning_effort=<low|medium|high|xhigh> \
+  -o <report-file> "<self-contained brief>"
+opencode run -m openrouter/z-ai/glm-5.2 --variant xhigh --format json --dir <repo-root> \
+  "<self-contained brief>"
+```
+
+The read-only guarantees differ by lane: **codex `-s read-only` is an OS-level sandbox** — that worker cannot mutate the tree even if its reasoning goes wrong. **opencode's default-deny permissions are application-level gating**, and config-dependent (a host config that allows edits weakens them) — cheap insurance is the executors' main-tree check (below) after an opencode worker run too. Direct `-o <report-file>` (and any captured stdout) into a scratch directory or a path this skill owns — never into the user's working tree (the analyzers' `--output` rule, applied to runners). The `--json` / `--format json` event streams are where the **session id** for steering comes from — capture it at dispatch.
+
+Executor — `--execute-level`, confined to the disposable worktree:
+
+```bash
+codex exec --json -s workspace-write -C <worktree> -c model_reasoning_effort=<effort> \
+  -o <report-file> "<plan, inlined, + executor preamble>"
+opencode run -m openrouter/z-ai/glm-5.2 --variant <high|xhigh> --format json --dir <worktree> --auto \
+  "<plan, inlined, + executor preamble>"
+```
+
+The two lanes confine differently — know which guarantee you're holding. **codex `workspace-write` rooted at the worktree is an OS-level sandbox** — writes outside it are blocked by construction, so Hard Rules 1–2 hold mechanically; prefer this lane for execution when both exist. (It also blocks *network* by default — a plan whose steps need dependency installs either gets `-c sandbox_workspace_write.network_access=true` on dispatch, stated in the run record since it widens the sandbox to the network, or the orchestrator pre-installs dependencies in the worktree before dispatching.) **opencode `--auto` is permission auto-approval, not filesystem confinement** — the worktree boundary rides on the brief and on review: after any `--auto` run, verify the user's working tree is untouched (`git -C <repo-root> status --porcelain` unchanged) *before* reviewing the worktree diff, and treat any main-tree write as an automatic BLOCK. Keep `-o <report-file>` inside the worktree or scratch. Never `danger-full-access`; never `--auto` outside a worktree.
+
+Steering / REVISE — continue the same session instead of re-briefing from zero. **A resumed run inherits no confinement you don't restate**: `codex exec resume` has no `-s`/`-C` flags and re-roots its sandbox at the *invocation cwd* — resuming an executor from the repo root would put the user's tree inside the write scope. Always resume from the same working root and re-pass the dispatch's confinement:
+
+```bash
+# executor rounds — run FROM INSIDE the worktree, restate the sandbox:
+cd <worktree> && codex exec resume <session-id> -c sandbox_mode="workspace-write" "<review feedback>"
+opencode run -s <session-id> --dir <worktree> --auto "<review feedback>"
+
+# read-only rounds — same rule with the read-only scope:
+cd <repo-root> && codex exec resume <session-id> -c sandbox_mode="read-only" "<narrowed brief>"
+opencode run -s <session-id> --dir <repo-root> "<narrowed brief>"
+```
+
+Session ids come from the dispatch's `--json` / `--format json` events; `codex exec resume --last` and `opencode run -c` (continue-last) are fallbacks **only when a single dispatch is in flight**. The main-tree check runs after *every* CLI round that can write — not just the first.
+
+**Effort mapping** — `--execute-level` (and the auto-pick) translated per lane:
+
+| Level | codex `model_reasoning_effort` | opencode glm-5.2 `--variant` | Native Claude |
+|---|---|---|---|
+| low | `low` | `high` *(clamped — glm-5.2 exposes only `high`/`xhigh`; state the clamp)* | low |
+| medium | `medium` | `high` | medium |
+| high | `high` | `high` | high |
+| max | `xhigh` | `xhigh` | max |
+
+**CLI-runner constraints** — so the org chart holds across lanes:
+
+- **One run = one unit.** A CLI run emits no mid-run heartbeat; its single terminal return *is* the heartbeat. Keep CLI briefs one well-specified unit small, and apply spiral detection *across runs* — a resumed run that restates its previous return rather than advancing is a spiral signal.
+- **Briefs carry identical obligations:** self-contained (Hard Rule 3), Hard Rules 4 and 6 verbatim, the raise-hand rule verbatim, the report format when executing — and they compress under `--caveman` exactly like native subagent prompts (auto-clarity holds).
+- **Returns are vetted like any worker's** — Phase-3 confirmation against the code before anything is recorded. A different provider does not change the trust model: a return is a claim, not a fact, and Rule 6 applies to what the runner read *and* to what it sent back.
+- **Preflight before staffing a lane:** the CLI exists, is authenticated, and the model answers (a one-line ping if in doubt). A lane failing mid-run is a **reassign** steer — move the unit to the next lane and record it; never route around a failed lane by silently spending the session model.
 
 ## Spiral detection
 
@@ -61,6 +153,7 @@ Dispatch is not fire-and-forget. A **heartbeat** is any interim signal an agent 
 | `--sub-continuous` | claim-board status changes and per-agent `### <agent-id>` blocks on the blackboard head-doc |
 | Phase 5 (`--execute-level`) | the executor's STATUS report; each REVISE-round reply |
 | Manager rung | the manager's report per merged worker result |
+| Provider-CLI runner | its single terminal return (or the JSONL event stream, when watched live) — one run, one heartbeat |
 
 On each heartbeat, answer three questions — **advancing? still aimed at the end goal? still needed?** — and steer accordingly:
 
@@ -74,9 +167,9 @@ Use direct agent messaging where the harness supports it (fast path), but **reco
 
 ## Interplay with the flags
 
-- **`--model` default** *is* the CEO staffing the chart; an explicit `--model` pins tiers, and the CEO still watches and escalates.
+- **`--model` default** *is* the CEO staffing the chart (per the roster above); an explicit `--model` pins tiers, and the CEO still watches and escalates. `--model` may name any roster model — a native name pins the native lane; a CLI-lane model requires that CLI on the host (absent → say so and fall back per the roster, never silently substitute).
 - **`--execute-level=auto`** sets effort per plan by the rule in SKILL.md "Model & effort assignment" — rung × plan difficulty.
 - **`--depth`**: `quick` = no managers, ≤1 worker; `standard` = CEO + workers (≤4 concurrent); `deep` = managers allowed (≤8 concurrent). The caps bound **total** concurrent agents, manager-spawned workers included — a manager rung re-slices the cap, it doesn't raise it. (Under `--sub-continuous`, the live budget replaces these caps.)
 - **`--caveman`** compresses heartbeat transport; evidence stays verbatim, and auto-clarity holds for anything security-relevant or ambiguous.
-- **`--sub-continuous`**: heartbeats ride the blackboard; when the throttle ladder cuts spend, cut worker concurrency first — the manager's merge and the CEO's judgment are the last things to cut, because unjudged raw output is the real waste.
+- **`--sub-continuous`**: heartbeats ride the blackboard; when the throttle ladder cuts spend, cut *native* worker concurrency first — offload lanes don't draw the quota pool (`sub-continuous.md` pre-flight §5). The manager's merge and the CEO's judgment are the last things to cut, because unjudged raw output is the real waste.
 - **No-subagent harness**: the chart collapses to one agent working rung by rung, lens by lens — and the guardrails still bind: watch *yourself* for the same spiral signals, and on detecting one, stop, decide the blocking question at full capability, then continue mechanically.

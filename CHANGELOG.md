@@ -4,6 +4,61 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.8.0] — 2026-07-04
+
+### Added
+- **The model roster & routing** (`references/delegation.md`, new section; SKILL.md
+  "Model & effort assignment" expanded). Staffing is no longer limited to the harness's
+  own models — two dispatch lanes: **native subagents** (on Claude Code: `sonnet` /
+  `opus` / `fable`) and **provider-CLI runners** (`codex` → OpenAI models, `opencode` →
+  OpenRouter-served models such as glm-5.2), detected at recon via `command -v`. The
+  shipped roster ranks gpt-5.5, glm-5.2 xhigh, sonnet-5, opus-4.8, and fable-5 on
+  cost / intelligence / taste, with routing rules: **quota preservation** (the session
+  model is spent only where intelligence compounds — orchestration, vetting, verdicts;
+  worker-tier units offload to a CLI lane whenever one is installed), defaults-not-limits
+  escalation (judge the output, not the price tag), intelligence > taste > cost for
+  anything that ships, taste ≥ 7 for user-facing work, never staff Haiku. Dispatch
+  mechanics are verified command shapes: `codex exec -s read-only|workspace-write
+  -C <dir> -c model_reasoning_effort=low|medium|high|xhigh -o <report>` (+
+  `codex exec resume <session-id>` for steering/REVISE — confinement restated on every
+  resume), `opencode run -m openrouter/z-ai/glm-5.2 --variant high|xhigh` (+
+  `-s <session-id>`; `--auto` only inside a worktree) — codex's OS-level sandbox enforces
+  Hard Rules 1–2 mechanically; the opencode lane is permission-gated, with a mandatory
+  post-run main-tree check (`git status --porcelain` unchanged) instead. Includes
+  the `--execute-level`→effort mapping per lane and the CLI-runner constraints (one run
+  = one unit = one heartbeat; spiral detection across resumes; briefs carry the same
+  verbatim rules; returns vetted like any worker's; lane preflight + reassign-on-failure).
+- **CLI-lane executor dispatch** (`references/closing-the-loop.md`). `--execute-level`
+  can now dispatch the executor through a provider CLI confined to the disposable
+  worktree (the orchestrator creates the worktree; codex's sandbox pins writes inside it,
+  the opencode lane adds the post-run main-tree check); REVISE resumes the same CLI
+  session with the confinement restated from inside the worktree; high-risk diffs may get
+  one **second-opinion review from a different provider** (read-only run — advisory
+  input; the verdict stays the CEO's).
+- **Offload lanes in `--sub-continuous`** (`references/sub-continuous.md` pre-flight §5).
+  Provider-CLI dispatches spend the other provider's budget, not the Claude quota pool —
+  prefer offloading worker units under quota pressure; the throttle ladder cuts *native*
+  workers first; a CLI lane hitting its own limit idles (reassign or drain), never
+  routing its work onto Claude credits. The credits guard governs the Claude quota only.
+
+- **Pay-per-token lane consent** (`--sub-continuous`): at pre-flight, lanes are
+  classified subscription vs pay-per-token; a metered lane (e.g. OpenRouter) needs one
+  explicit user consent with a projected per-unit cost before it's staffed in a campaign
+  — the credits-guard principle applied to the other provider's wallet.
+
+### Changed
+- **Hard Rules 1–2 amended** for the CLI lane: Rule 1 now names the executor as "a
+  native subagent, or a provider-CLI run" and owns the disposable worktree + captured
+  report file for the run's duration; Rule 2's worktree-creation exception covers the
+  generated `advisor/<plan-id>` branch and the worktree the orchestrator itself creates
+  for a provider-CLI executor.
+- **CEO tier redefined** from "the strongest model in the run" to "the session model —
+  the run's judgment tier, never offloaded" (the roster can staff workers that outrank
+  the session model on raw intelligence; judgment stays with the orchestrator).
+- SKILL.md Phase 1 recon now detects available dispatch lanes (`command -v codex
+  opencode`); Phase 2 names the CLI-runner fan-out option beside native Explore agents;
+  README documents the two lanes in the `--model` row and "How it works".
+
 ## [2.7.0] — 2026-07-02
 
 ### Added
@@ -180,6 +235,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.8.0]: https://github.com/Havoc45/explore/releases/tag/v2.8.0
 [2.7.0]: https://github.com/Havoc45/explore/releases/tag/v2.7.0
 [2.6.0]: https://github.com/Havoc45/explore/releases/tag/v2.6.0
 [2.5.0]: https://github.com/Havoc45/explore/releases/tag/v2.5.0

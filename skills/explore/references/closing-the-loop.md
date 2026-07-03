@@ -11,8 +11,10 @@
 > executor's reasoning effort (`auto` = the orchestrator sets it per plan —
 > mechanical, well-specified → `low`/`medium`; cross-cutting, security, ambiguous
 > → `high`/`max`), and the model comes from `<plan:model>` or `--model` (default:
-> the orchestrator auto-selects the best-fit model per plan — on Claude Code, a
-> Claude model; on other harnesses, any provider's). Dispatch and review follow
+> the orchestrator auto-selects the best-fit model per plan from the delegation
+> roster — native harness models, or provider-CLI models such as gpt-5.5 via
+> `codex` / glm-5.2 via `opencode` where those CLIs are installed; see
+> `delegation.md` "The model roster & routing"). Dispatch and review follow
 > the org chart in `delegation.md`.
 >
 > **Code mode only.** This entire file applies only when `--code-mode=yes` (the
@@ -30,7 +32,7 @@
 
 The advisor's job doesn't end at the plan. This file covers the three follow-through flows: dispatching an executor and reviewing its work (`execute`), keeping the plan backlog alive (`reconcile`), and publishing plans where work gets picked up (`--issues`).
 
-The founding rule survives unchanged: **the advisor never edits source code.** In `execute`, a *separate executor subagent* edits code in an isolated git worktree; the advisor dispatches, reviews, and renders a verdict — like a tech lead who doesn't push commits to your branch.
+The founding rule survives unchanged: **the advisor never edits source code.** In `execute`, a *separate executor* — a native subagent, or a provider-CLI run — edits code in an isolated git worktree; the advisor dispatches, reviews, and renders a verdict — like a tech lead who doesn't push commits to your branch.
 
 ---
 
@@ -44,9 +46,14 @@ The founding rule survives unchanged: **the advisor never edits source code.** I
 
 ### Dispatch
 
-Spawn **one** `general-purpose` subagent with `isolation: "worktree"`. Executor model: what the user named if they named one (`execute 003 haiku` / `<plan:model>` / `--model`); otherwise the orchestrator's best-fit pick per the org chart (see SKILL.md "Model & effort assignment" and `delegation.md`) — state the choice.
+Executor model: what the user named if they named one (`execute 003 gpt-5.5` / `<plan:model>` / `--model`); otherwise the orchestrator's best-fit pick per the org chart and roster (see SKILL.md "Model & effort assignment" and `delegation.md` "The model roster & routing") — state the model **and** effort. Then dispatch by lane:
 
-The subagent prompt must contain:
+- **Native lane** — spawn **one** `general-purpose` subagent with `isolation: "worktree"`.
+- **Provider-CLI lane** (e.g. gpt-5.5 via `codex`, glm-5.2 via `opencode`) — create the worktree yourself (existing branch: `git worktree add <path> <branch>`; new or generated branch: `git worktree add -b <branch> <path> HEAD` — sanctioned under Hard Rule 2's executor-worktree exception), then run the CLI **confined to that worktree** — exact commands, sandbox scopes, and the `--execute-level`→effort mapping are in `delegation.md` ("Dispatch mechanics"). Capture the report (`codex exec … -o <file>`, written into the worktree or scratch — never the main tree; opencode stdout) and the session id (dispatch with `--json` / `--format json`) for the REVISE loop.
+
+Either lane, one executor at a time per plan.
+
+The executor brief — either lane: the subagent prompt, or the CLI run's prompt — must contain:
 
 1. **The full plan file text, inlined.** The worktree contains only committed files — if `plans/` is uncommitted, the executor can't read it. Never assume; always inline.
 2. The executor preamble:
@@ -105,11 +112,13 @@ Note on fresh worktrees: they share git history but not `node_modules` or build 
 Review like a tech lead reviewing a PR against the spec — never fix anything yourself:
 
 1. **Re-run every done criterion** in the worktree. Don't trust the executor's report — verify.
-2. **Scope compliance**: `git -C <worktree> diff --stat` against the plan's in-scope list. Any file outside scope fails review, full stop.
+2. **Scope compliance**: `git -C <worktree> diff --stat` against the plan's in-scope list. Any file outside scope fails review, full stop. For a CLI-lane executor that ran without an OS-level sandbox (opencode `--auto`), first confirm the user's *main* working tree is untouched (`git -C <repo-root> status --porcelain` unchanged since dispatch) — a main-tree write is an automatic BLOCK.
 3. **Read the full diff.** Judge it against "Why this matters" (does it solve the actual problem?) and the repo conventions named in the plan (does it look like the rest of the codebase?).
 4. **Audit the new tests.** Executors game criteria — a test that asserts nothing meaningful passes `pnpm test` and proves nothing. Read what the tests assert.
 5. **Check no existing behaviour was weakened to shrink the diff** (execution principle 2): a deleted validation branch, a dropped UI/error state, a loosened type, a removed guard. If the diff achieves "less code" by quietly removing behaviour the task didn't ask to remove, that's a REVISE/BLOCK regardless of whether the done criteria pass.
 6. **Read the accounting** (NOT DONE / ASSUMPTIONS / SMELLS). Confirm the assumptions are acceptable (and escalate any 1(a) assumption on a costly-to-reverse decision to the user), and carry forward unaddressed SMELLS as candidate findings for the next `--improve`/`--reconcile` rather than letting them vanish.
+
+For high-risk diffs (security, schema, public API), optionally commission one independent **second-opinion review from a different provider** — a read-only CLI run over the worktree (e.g. `codex exec -s read-only -C <worktree> "<review brief: the plan + what to judge>"`). Its findings are advisory input to your verdict; the verdict stays yours (org chart: verdicts never move down — or out).
 
 ### Verdict
 
@@ -118,7 +127,7 @@ Review like a tech lead reviewing a PR against the spec — never fix anything y
 | Verdict | When | Action |
 |---|---|---|
 | **APPROVE** | Criteria pass, scope clean, quality holds | Update index status to DONE. Present to the user: diff summary, worktree path and branch, anything from NOTES. **Merging is always the user's decision — never merge.** By default don't push or open a PR; under `--bypass-pr-create=yes` (an `--improve` run), push the working branch and open a PR (`gh pr create`) that summarises and links the plan, for human review. |
-| **REVISE** | Fixable gaps | SendMessage to the same executor with specific, actionable feedback ("criterion 3 fails: X; the error handling in `api.ts:90` swallows the error — use the Result pattern per the plan"). **Max 2 revision rounds**, then BLOCK. A revision that *restates rather than advances* is a spiral (`delegation.md`) — skip the remaining round and climb the ladder: extract the blocking decision, settle it with a stronger model at low effort, then re-dispatch the executor with the answer inlined in the plan — or BLOCK with the refined plan. |
+| **REVISE** | Fixable gaps | Send specific, actionable feedback to the *same* executor ("criterion 3 fails: X; the error handling in `api.ts:90` swallows the error — use the Result pattern per the plan") — native lane: a direct agent message (SendMessage); CLI lane: resume the session **with the confinement restated** (from inside the worktree: `codex exec resume <session-id> -c sandbox_mode="workspace-write" "<feedback>"` / `opencode run -s <session-id> --dir <worktree> --auto "<feedback>"` — a bare resume re-roots at your cwd; see `delegation.md` "Dispatch mechanics"), and re-run the main-tree check after every round. **Max 2 revision rounds**, then BLOCK. A revision that *restates rather than advances* is a spiral (`delegation.md`) — skip the remaining round and climb the ladder: extract the blocking decision, settle it with a stronger model at low effort, then re-dispatch the executor with the answer inlined in the plan — or BLOCK with the refined plan. |
 | **BLOCK** | STOP condition hit, scope violated unrecoverably, or revisions exhausted | Mark BLOCKED in the index with the reason. Refine or rewrite the plan with what was learned. Tell the user what happened and what changed in the plan. |
 
 Running verification commands inside the executor's worktree is fine — it's isolated and disposable. The no-mutating-commands rule protects the user's working tree, not the worktree.

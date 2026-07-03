@@ -6,7 +6,7 @@
 Handover for **`explore`** — read-only senior-architect-advisor Agent Skill + multi-harness plugin. Owner: **Havoc45** (Hazim), Comfort Works frontend/DevOps dev, Kuala Lumpur. Repo: local working copy `/Users/hazim/Documents/Projects/explore`, remote `https://github.com/Havoc45/explore` (**PRIVATE**), gh auth = Havoc45.
 
 ## Current state
-- Version **2.7.0** (2026-07-02). All 8 declared version fields in lockstep — verify: `scripts/bump-version.sh --check`.
+- Version **2.8.0** (2026-07-04). All 8 declared version fields in lockstep — verify: `scripts/bump-version.sh --check`. **2.8.0 changes UNCOMMITTED** as of writing (Hazim commits on explicit ask) — verify: `git status`.
 - Repo IS both plugin + self-marketplace (`.claude-plugin/` holds plugin.json + marketplace.json) AND carries per-harness manifests (superpowers layout, see NOTICE §4).
 - v2.7.0 committed + pushed 2026-07-02, tag `v2.7.0`. **Don't trust handover prose — verify:** `git log --oneline -1` (subject starts `update 2.7.0`), `git status` (clean), `scripts/bump-version.sh --check`.
 - Provenance note: session-history claims in this doc (verification workflows, finding counts) are context, not repo-checkable; every claim ABOUT the repo carries a verify command.
@@ -26,7 +26,7 @@ explore/
 │   ├── references/
 │   │   ├── system-design-reference.md · architecture-patterns.md · system-design-workflows.md · tech-decision-guide.md
 │   │   ├── audit-playbook.md · plan-template.md · closing-the-loop.md
-│   │   ├── delegation.md          (NEW 2.7.0 — org chart mechanics, spiral detection, escalation ladder, steering)
+│   │   ├── delegation.md          (2.7.0 org chart mechanics, spiral detection, escalation ladder, steering; 2.8.0 + model roster & routing — provider-CLI lanes)
 │   │   ├── caveman.md · init.md
 │   │   └── sub-continuous.md      (+ NEW throttle ladder & credits guard)
 │   └── scripts/  (3 vendored py analyzers + mermaid-verify.mjs)
@@ -106,6 +106,7 @@ Key insight: superpowers needs session-start bootstrap injection (skills must au
 ## Version arc
 - v1.0.0 initial explore · v1.1.0 --sub-continuous · **v2.0.0** flags interface + improve merge + Hard Rule 7 · v2.1.0 --init · v2.1.1 plans/ at root + marketplace · v2.2.0 agents/ mirror · v2.3.0 mermaid hardening + --reference/--code-mode/--branch/--bypass-pr-create · v2.4.0 mermaid-verify.mjs + sequence-diagram escaping fix · v2.5.0 execution principles · v2.6.0 --plan-list
 - **v2.7.0** (2026-07-02, this session): `--execute-level=auto` · **org chart** (delegation.md — CEO/manager/worker, spiral detection, escalation ladder, steering/heartbeats) · sub-continuous **throttle ladder + credits guard** · **multi-harness manifests** + install docs + Platform adaptation · **bump-version tooling** · description pruned (one-trigger-per-branch) · commands/explore.md collapsed to pointer (single source of truth) · closing-the-loop "default sonnet" contradiction fixed · adversarially verified by 3-agent workflow (17 findings incl. 1 HIGH: ladder rung 4 needed --execute-level carve-out so CEO never writes code; all fixed).
+- **v2.8.0** (2026-07-04): **model roster & routing** (delegation.md new section) — 2 dispatch lanes: native subagents + provider-CLI runners (`codex`→OpenAI, `opencode`→OpenRouter/glm-5.2); roster ranks gpt-5.5/glm-5.2-xhigh/sonnet-5/opus-4.8/fable-5 on cost/intelligence/taste; routing = quota preservation (session model = orchestration/judgment ONLY; workers offload to CLI lanes), intelligence>taste>cost, taste≥7 user-facing, never Haiku · CLI-lane executor dispatch (closing-the-loop.md — worktree-confined; REVISE = session resume; cross-provider 2nd-opinion review advisory) · sub-continuous offload economics (CLI lanes don't draw quota pool; ladder cuts native workers first) · all CLI mechanics LIVE-VERIFIED (codex 0.142.5: `-s read-only|workspace-write`, `-C`, `model_reasoning_effort=xhigh`, `exec resume`; opencode 1.17.13: `--variant high|xhigh` only for glm-5.2, silent-ignore unknown variants, `--auto` = approval NOT sandbox → main-tree check post-run). KEY FACT: **claude-sonnet-5 verified real** (CLI modelUsage) — newer than cached catalogs. Adversarially verified by 4-lens/35-agent workflow: 19 confirmed findings fixed incl. 2 HIGH — (1) `codex exec resume` re-roots sandbox at invocation cwd (live-reproduced main-tree write!) → confinement restated on every resume, main-tree check every round; (2) Hard Rule 2 exception widened for orchestrator-created worktrees (generated `advisor/<plan-id>` branch). Also: opencode = permission-gated NOT sandboxed (split guarantees), `-o` report files never into user tree, workspace-write blocks network by default, pay-per-token lane consent in sub-continuous, CEO redefined "session model" not "strongest model".
 
 ## Mermaid — verified gotchas (rules in system-design-reference.md; durable knowledge)
 - Quote labels w/ special chars. Node ids alphanumeric. `end` reserved. `flowchart` not `graph`. One edge/line. Subgraphs before crossing edges.
