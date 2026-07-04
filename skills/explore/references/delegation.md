@@ -41,21 +41,28 @@ Capability economics says *which rung*; the roster says *which model* — and th
 |---|---|---|---|---|
 | gpt-5.5 | `codex` CLI | 9 | 8 | 5 |
 | glm-5.2 xhigh | `opencode` CLI | 8 | 7 | 5 |
-| sonnet-5 | native | 6 | 5 | 7 |
+| sonnet-5 | native | 6 | 6 | 7 |
 | opus-4.8 | native | 4 | 8 | 8 |
 | fable-5 | native / the session itself | 2 | 9 | 9 |
 
-*(glm-5.2 scores are provisional — calibrate after first use. On a harness whose native models differ, substitute its own tiers at the same rungs.)*
+*(Scores provisional — calibrated so far only against a three-executor bake-off, 2026-07-04: two small, well-specified config-repo plans, which measures execution fidelity, not coding, design, or debugging capability. Re-score after real coding runs. On a harness whose native models differ, substitute its own tiers at the same rungs.)*
+
+**Per-model calibration** — observed profiles; fold the brief requirements in at dispatch:
+
+- **gpt-5.5** — strict literalist, best protocol fidelity: honors STOP conditions exactly, raises its hand with a precise diagnosis when the plan contradicts itself, never improvises. The cost is one extra round-trip whenever the plan holds a wrinkle a bolder model would resolve itself — budget for it. Best default where deviation must never be silent.
+- **glm-5.2 xhigh** — best bounded judgment and accounting: self-adjudicates within scope and defends the reasoning openly in ASSUMPTIONS rather than stopping or going silent; also the best finder of adjacent issues. Weaknesses: verbose reports, slowest wall-clock, and its lane drops tool junk (`.codegraph/`, `.omo` — opencode tooling) into the tree — sweep for and remove it after every opencode run, before diff review.
+- **sonnet-5** — fastest, cheapest path to a correct result on well-specified mechanical work (one pass, byte-parity with an approved original). Weakness: **silent deviation** — applies pre-adjudicated amendments without surfacing them and leaves the thinnest deviation trail; on a plan where the amendment *hadn't* been adjudicated, that same silence is a REVISE. Its briefs restate the reporting contract explicitly: *record every deviation, however small*.
 
 **Routing rules** — the CEO applies these when staffing the chart:
 
 1. **Quota preservation.** The session model's quota is the scarcest budget in the run — spend it only where intelligence compounds: orchestration, judgment, vetting, verdicts, assembly. Worker-tier units (lens sweeps, audit categories, well-specified execution, mechanical analysis) go to a provider-CLI lane whenever one is installed; native subagents are the worker-tier *fallback*, not the default.
-2. **Defaults, not limits.** Standing permission to escalate: judge the output, not the price tag. A cheaper model's return that doesn't meet the bar is redone one tier up without asking — escalating costs less than shipping mediocre work (the escalation ladder already encodes this).
-3. **Intelligence > taste > cost** when axes conflict for anything that ships; cost is a tie-breaker only.
-4. **Bulk/mechanical work** (clear-spec execution, migrations, data analysis, lens sweeps) → gpt-5.5. glm-5.2 xhigh is the second bulk lane — an independent perspective, or the substitute when `codex` is absent or its limits exhausted.
-5. **Anything user-facing** (UI, copy, API design) needs taste ≥ 7 — a native Claude tier.
-6. **Verdicts and reviews stay with the CEO.** Optionally commission one independent second-opinion review from a *different provider* (read-only CLI run) — advisory input to the verdict, never the verdict itself.
-7. **Never staff Haiku.** The cheap tier is a CLI lane — or sonnet-5 at low effort when no CLI is installed.
+2. **The Lane column binds.** A roster model is dispatched only through its listed lane. OpenRouter also serves Claude models (`openrouter/anthropic/claude-sonnet-5`, …), so the `opencode` lane *can* reach them — never route it: that swaps included-subscription quota for pay-per-token spend, drops the harness's native dispatch surface, and voids rule 7's different-provider independence (and `--variant` flags are silently ignored off glm-5.2, so effort quietly vanishes). Rule 1 offloads worker-tier *units* to cheaper CLI-lane models; it never re-lanes a Claude model. A named model unavailable on its lane falls back *within* the lane: native Claude tiers descend to the **sonnet-4.6 floor** — never lower, never Haiku (rule 8), never sideways into a CLI lane; an unavailable CLI-lane model is a preflight **reassign** (constraints below).
+3. **Defaults, not limits.** Standing permission to escalate: judge the output, not the price tag. A cheaper model's return that doesn't meet the bar is redone one tier up without asking — escalating costs less than shipping mediocre work (the escalation ladder already encodes this).
+4. **Intelligence > taste > cost** when axes conflict for anything that ships; cost is a tie-breaker only.
+5. **Bulk/mechanical work** (clear-spec execution, migrations, data analysis, lens sweeps) → gpt-5.5. glm-5.2 xhigh is the second bulk lane — an independent perspective, or the substitute when `codex` is absent or its limits exhausted.
+6. **Anything user-facing** (UI, copy, API design) needs taste ≥ 7 — a Claude tier, on the native lane (rule 2).
+7. **Verdicts and reviews stay with the CEO.** Optionally commission one independent second-opinion review from a *different provider* (read-only CLI run) — advisory input to the verdict, never the verdict itself.
+8. **Never staff Haiku.** The cheap tier is a CLI lane — or sonnet-5 at low effort when no CLI is installed (floor per rule 2: sonnet-4.6).
 
 **Rung staffing with the roster:**
 

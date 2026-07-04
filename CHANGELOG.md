@@ -4,6 +4,37 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.8.1] — 2026-07-04
+
+### Fixed
+- **Lane binding made explicit** (`references/delegation.md`, new routing rule 2 "The
+  Lane column binds"; old rules 2–7 renumbered 3–8). The roster's Lane column was
+  reference, not a rule — quota preservation ("CLI lane whenever one is installed")
+  plus opencode exposing `openrouter/anthropic/claude-sonnet-5` let a live session
+  route sonnet-5 through the `opencode` lane. Now: a roster model is dispatched only
+  through its listed lane; Claude models are never re-laned through a provider CLI
+  (pay-per-token instead of included quota, no native dispatch surface, voids the
+  different-provider second-opinion independence, `--variant` silently ignored off
+  glm-5.2). Rule 6 (user-facing taste ≥ 7) clarified to "a Claude tier, on the
+  native lane".
+
+### Added
+- **Model-unavailability fallback floor** (same rule): a named model unavailable on
+  its lane falls back *within* the lane — native Claude tiers descend to the
+  **sonnet-4.6 floor**, never lower, never Haiku, never sideways into a CLI lane;
+  an unavailable CLI-lane model remains a preflight reassign.
+
+### Changed
+- **Roster calibrated** against the 2026-07-04 three-executor bake-off (two small,
+  well-specified config-repo plans; scores stay provisional — execution fidelity
+  measured, coding/design/debugging capability not yet): sonnet-5 intelligence
+  5 → 6 (one-pass byte-parity with the approved original, correct handling of the
+  pre-adjudicated amendment). New per-model calibration notes with
+  brief requirements at dispatch: gpt-5.5 strict literalist (budget an extra round
+  on plan wrinkles), glm-5.2 self-adjudicates openly but drops `.codegraph/`/`.omo`
+  tool junk (sweep after every opencode run, before diff review), sonnet-5
+  silent-deviation risk (briefs restate *record every deviation, however small*).
+
 ## [2.8.0] — 2026-07-04
 
 ### Added
@@ -235,6 +266,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.8.1]: https://github.com/Havoc45/explore/releases/tag/v2.8.1
 [2.8.0]: https://github.com/Havoc45/explore/releases/tag/v2.8.0
 [2.7.0]: https://github.com/Havoc45/explore/releases/tag/v2.7.0
 [2.6.0]: https://github.com/Havoc45/explore/releases/tag/v2.6.0
