@@ -6,7 +6,7 @@
 Handover for **`explore`** — read-only senior-architect-advisor Agent Skill + multi-harness plugin. Owner: **Havoc45** (Hazim), Comfort Works frontend/DevOps dev, Kuala Lumpur. Repo: local working copy `/Users/hazim/Documents/Projects/explore`, remote `https://github.com/Havoc45/explore` (**PRIVATE**), gh auth = Havoc45.
 
 ## Current state
-- Version **2.8.1** (2026-07-04). All 8 declared version fields in lockstep — verify: `scripts/bump-version.sh --check`. 2.8.0 committed (`6495978`); **2.8.1 changes UNCOMMITTED** as of writing (Hazim commits on explicit ask) — verify: `git status`.
+- Version **2.8.1** (2026-07-04). All 8 declared version fields in lockstep — verify: `scripts/bump-version.sh --check`. 2.8.1 committed (`3fadfb6`), pushed, tagged `v2.8.1` (Hazim commits on explicit ask) — verify: `git status`.
 - Repo IS both plugin + self-marketplace (`.claude-plugin/` holds plugin.json + marketplace.json) AND carries per-harness manifests (superpowers layout, see NOTICE §4).
 - v2.7.0 committed + pushed 2026-07-02, tag `v2.7.0`. **Don't trust handover prose — verify:** `git log --oneline -1` (subject starts `update 2.7.0`), `git status` (clean), `scripts/bump-version.sh --check`.
 - Provenance note: session-history claims in this doc (verification workflows, finding counts) are context, not repo-checkable; every claim ABOUT the repo carries a verify command.
@@ -128,4 +128,4 @@ Havoc45 (Hazim): frontend + DevOps, Comfort Works (Shopify / Vue3 / Tailwind4 / 
   - **Cursor**: valid `.cursor-plugin/plugin.json` (have it) → repo public → submit repo link at `cursor.com/marketplace/publish` (Cursor team reviews; logo in repo recommended). Until listed, Cursor/Codex users install from local path.
 - Candidates never done: `--execute-level` dry run on a real plan (show executor contract + review loop end-to-end); GitHub Actions workflow validating manifests + running `bump-version.sh --check` on push.
 - OpenCode support = write in-process JS plugin (skills registration) — deliberate skip so far.
-- Tags: `v2.1.1`, `v2.3.0`–`v2.7.0` exist (backfilled at the commit whose *manifest* carries each version — commit messages lag manifests by one: `17610fc` says "update 2.6.0" but its plugin.json = 2.5.0; the real 2.6.0 manifest landed in `cda1a78` "update"). v1.0.0–v2.2.0 predate the repo → no tags, their CHANGELOG headings intentionally unlinked.
+- Tags: `v2.1.1`, `v2.3.0`–`v2.8.1` exist (backfilled at the commit whose *manifest* carries each version — commit messages lag manifests by one: `17610fc` says "update 2.6.0" but its plugin.json = 2.5.0; the real 2.6.0 manifest landed in `cda1a78` "update"). v1.0.0–v2.2.0 predate the repo → no tags, their CHANGELOG headings intentionally unlinked.
