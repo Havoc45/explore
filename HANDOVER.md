@@ -3,14 +3,14 @@
 > **Compression:** caveman-ultra (per `explore --caveman=ultra`). Articles/filler dropped, fragments, `→` = leads-to/causal, abbrevs (repo, config, impl, deps, dir, docs, pkg, ref). **Verbatim** (payload, never compressed): file paths, versions, flag names, commands, technical terms, error strings. Headers + structure kept clear (auto-clarity — a handover must not be misread).
 
 ## What this is
-Handover for **`explore`** — read-only senior-architect-advisor Agent Skill + multi-harness plugin. Owner: **Havoc45** (Hazim), Comfort Works frontend/DevOps dev, Kuala Lumpur. Repo: local working copy `/Users/hazim/Documents/Projects/explore`, remote `https://github.com/Havoc45/explore` (**PRIVATE**), gh auth = Havoc45.
+Handover for **`explore`** — read-only senior-architect-advisor Agent Skill + multi-harness plugin. Owner: **Havoc45** (Hazim), Comfort Works frontend/DevOps dev, Kuala Lumpur. Repo: local working copy `/Users/hazim/Documents/Projects/explore`, remote `https://github.com/Havoc45/explore` (**PUBLIC** since 2026-07-06), gh auth = Havoc45.
 
 ## Current state
 - Version **2.10.0** (2026-07-06). All 8 declared version fields in lockstep — verify: `scripts/bump-version.sh --check`. Committed + tagged `v2.10.0` + pushed — verify: `git log --oneline -1` (subject starts `update 2.10.0`), `git status` (clean). Tag ledger fix: v2.9.0 (`e2d626e`) was committed WITHOUT tag → `v2.9.0` backfilled onto `e2d626e`, pushed same batch.
 - Repo IS both plugin + self-marketplace (`.claude-plugin/` holds plugin.json + marketplace.json) AND carries per-harness manifests (superpowers layout, see NOTICE §4).
 - v2.7.0 committed + pushed 2026-07-02, tag `v2.7.0`. **Don't trust handover prose — verify:** `git log --oneline -1` (subject starts `update 2.7.0`), `git status` (clean), `scripts/bump-version.sh --check`.
 - Provenance note: session-history claims in this doc (verification workflows, finding counts) are context, not repo-checkable; every claim ABOUT the repo carries a verify command.
-- **Repo PRIVATE** → git-URL installs (`gemini extensions install`, Kimi `/plugins install`, `pi install git:`) fail for anyone but Havoc45 until made public. Codex App / Cursor need marketplace listing for 1-cmd install (manifests ready).
+- **Repo PUBLIC** (2026-07-06) → git-URL installs live for everyone (`/plugin marketplace add Havoc45/explore`, `gemini extensions install`, Kimi `/plugins install`, `pi install git:`). marketplace.json plugin entry carries display metadata (author/homepage/repository/license) since 2.10.0 chore. Codex App / Cursor still need marketplace *listing* submission for 1-cmd install (manifests ready — see Next steps).
 
 ## Tree
 ```
@@ -124,8 +124,8 @@ Test repo was `vite-plugin-shopify` monorepo (Comfort Works fork, pnpm+Turborepo
 Havoc45 (Hazim): frontend + DevOps, Comfort Works (Shopify / Vue3 / Tailwind4 / Vite + GKE), Kuala Lumpur. Direct, technically precise. Expects deviations from literal instructions flagged explicitly (precedents: AGENTS.md plural vs written "AGENT.md"; plans/agents/ digest vs body compression; 2.7.0 description prune flagged). Values accuracy → verify product facts, flag known issues. Concise prose, minimal formatting. Runs caveman mode + ultracode sessions; expects adversarial verification workflows before commit. Commits/pushes only on explicit ask.
 
 ## Next steps / open
-- **Repo is PRIVATE** — make public before advertising git-URL installs (Gemini/Kimi/pi/Antigravity all install from the GitHub URL).
-- Marketplace listings (**BLOCKED on private repo** — both require public source; manifests ready):
+- ~~Repo is PRIVATE~~ **DONE 2026-07-06 — repo PUBLIC**; git-URL installs (Gemini/Kimi/pi/Antigravity) now advertisable.
+- Marketplace listings (**UNBLOCKED** — repo public, manifests ready; submissions = manual steps for Hazim):
   - **Codex**: PR to `github.com/openai/plugins` adding `plugins/explore/` w/ `.codex-plugin/plugin.json` (superpowers automates this w/ a fork-sync script `scripts/sync-to-codex-plugin.sh` — copyable pattern).
   - **Cursor**: valid `.cursor-plugin/plugin.json` (have it) → repo public → submit repo link at `cursor.com/marketplace/publish` (Cursor team reviews; logo in repo recommended). Until listed, Cursor/Codex users install from local path.
 - Candidates never done: `--execute-level` dry run on a real plan (show executor contract + review loop end-to-end); GitHub Actions workflow validating manifests + running `bump-version.sh --check` on push; opencode-mcp.mjs permission-reply tool (wrapper currently documents the stall-on-permission-ask signature instead of answering asks — lean on purpose).
