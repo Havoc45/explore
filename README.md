@@ -131,6 +131,17 @@ agy plugin install https://github.com/Havoc45/explore
 
 Any harness that supports [Agent Skills](https://agentskills.io): install `skills/explore/`. Pi users: `pi install git:github.com/Havoc45/explore` (the root `package.json` declares the skills). No skill system at all? Tell the agent to read `skills/explore/SKILL.md` and follow it with the flags you want — the skill's "Platform adaptation" section maps its actions onto whatever tools the host has.
 
+## Minion platforms (optional)
+
+Where the `codex` and/or `opencode` CLIs are installed and authenticated, explore offloads worker-tier units (lens sweeps, audits, plan execution) to other providers' models, preserving your session quota for orchestration. Registering them as MCP servers upgrades that lane from fire-and-forget shell runs to steerable dispatch — structured session ids, live heartbeats, abort/redirect (mid-run on opencode; between turns on codex) — and each platform can spawn its own nested subagents under a manager brief:
+
+```bash
+claude mcp add --scope user codex -- codex mcp-server
+claude mcp add --scope user opencode -- node <explore-repo>/skills/explore/scripts/opencode-mcp.mjs
+```
+
+The vendored `opencode-mcp.mjs` wrapper (zero-dep Node) auto-starts `opencode serve` and exposes six tools (`opencode_run` / `fire` / `status` / `wait` / `steer` / `abort`). Without any registration, the skill falls back to `codex exec --json` / `opencode run --format json` shell runs — same roster, same confinement rules. Mechanics: `skills/explore/references/delegation.md`.
+
 ## How it works
 
 1. **Recon & truth-grounding** (Hard Rule 7) — scope the architecture and stack, then pull *every* source of truth: docs, ADRs, specs, configs, IaC, git signal, and available tool calls / MCP connectors. Establish what's actually there before judging.

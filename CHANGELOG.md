@@ -4,6 +4,57 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.9.0] — 2026-07-06
+
+### Added
+- **MCP dispatch transport for the provider-CLI lanes** (`references/delegation.md`,
+  new "Dispatch transports" + "MCP call shapes"). Each lane is now reachable two
+  ways: a registered MCP server — `codex mcp-server` (tools `codex` /
+  `codex-reply`), and a new vendored zero-dep wrapper
+  `skills/explore/scripts/opencode-mcp.mjs` over `opencode serve` (six tools:
+  `opencode_run` / `fire` / `status` / `wait` / `steer` / `abort`, one server
+  rooted per `directory` across repos and worktrees) — or the existing sandboxed
+  shell runs, which remain the universal fallback (no registration, non-MCP
+  harnesses, dispatch from inside a subagent). Registration snippets in
+  `README.md` "Minion platforms (optional)".
+- **Minion platforms — tier-3 nesting** (`delegation.md`): one lane dispatch can
+  be a *manager with minions* — codex `multi_agent` (stable, default-on at
+  0.142.5; collab tools `spawn_agent`/`wait`/`close_agent`; spawns only when the
+  brief explicitly asks) and opencode task-tool subagents (children inspectable
+  at `GET /session/{id}/children`; per-agent model fixed in config). `--depth`
+  caps bound total agents *including* platform-spawned minions, so fan-out
+  briefs carry their own cap; a platform that fans out is a manager and vets
+  before reporting up.
+- **Mid-run steering** (`delegation.md`, `closing-the-loop.md`): opencode
+  `opencode_steer` aborts the in-flight turn and redirects the same session — a
+  true interrupt (live-verified); codex steers checkpoint-style via
+  `codex-reply` (same server process; the live server retains the thread's
+  cwd/sandbox) with shell `codex exec resume` as the restart fallback — thread
+  ids interoperate between the two transports. REVISE rounds updated for both.
+- **Capability posture** (SKILL.md, org chart): staff as if on the max tier —
+  the org chart never shrinks to the orchestrator's own model or plan tier;
+  complex tasks get worktrees, sandboxed minions, and parallel lanes by
+  default. Judgment placement still follows the session model; spend governance
+  (throttle ladder, credits guard, pay-per-token consent) binds unchanged.
+
+### Changed
+- **Roster: glm-5.2 provisionality retired** (`references/delegation.md`). Proven on
+  real coding work: slightly below gpt-5.5 (which still leads most areas), cheaper
+  per token, and the standing fallback when the `codex` lane is absent or
+  exhausted. The provisional caveat now covers only the native-tier scores
+  (still calibrated on execution fidelity alone).
+- Tag/link record reconciled (CHANGELOG footer, HANDOVER): v1.0.0–v2.1.0 predate
+  the repo; v2.2.0's changes are in-repo (`347f036`) but no commit carried a
+  2.2.0 manifest, so it has no tag anchor; v2.1.1 (`b2ab369`) is the first
+  tagged, linked release.
+- Live-verified against codex 0.142.5 / opencode 1.17.13: `codex exec --json`
+  now emits `thread_id` in `thread.started` (the "session id missing from
+  `--json`" caveat is stale); the codex MCP thread registry is
+  per-server-process; opencode permission gating rides the host config through
+  both transports (a stalled async run usually = pending permission ask).
+  "One run = one unit" narrowed to the shell transport — MCP dispatches have
+  real heartbeats (`opencode_status` polls, codex progress events).
+
 ## [2.8.1] — 2026-07-04
 
 ### Fixed
@@ -266,6 +317,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.9.0]: https://github.com/Havoc45/explore/releases/tag/v2.9.0
 [2.8.1]: https://github.com/Havoc45/explore/releases/tag/v2.8.1
 [2.8.0]: https://github.com/Havoc45/explore/releases/tag/v2.8.0
 [2.7.0]: https://github.com/Havoc45/explore/releases/tag/v2.7.0
@@ -275,5 +327,7 @@ All notable changes to the `explore` plugin. This project adheres to
 [2.3.0]: https://github.com/Havoc45/explore/releases/tag/v2.3.0
 [2.1.1]: https://github.com/Havoc45/explore/releases/tag/v2.1.1
 
-<!-- v1.0.0–v2.2.0 predate this repository (built before the first git commit),
-     so no tags exist for them — their headings above are intentionally unlinked. -->
+<!-- v1.0.0–v2.1.0 predate this repository (built before the first git commit), so no
+     tags exist for them. v2.2.0's changes are in-repo (347f036) but no commit ever
+     carried a 2.2.0 manifest, so it has no tag anchor either. Those headings are
+     intentionally unlinked; v2.1.1 (b2ab369) is the first tagged, linked release. -->

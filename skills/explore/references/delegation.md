@@ -33,7 +33,7 @@ A senior at $100/hour who finishes in 10 hours costs $1,000; a junior at $10/hou
 Capability economics says *which rung*; the roster says *which model* — and the roster is not limited to the harness's own models. Two dispatch lanes:
 
 - **Native subagents** — the harness's own dispatch surface (on Claude Code: the Agent/Explore tools), running the harness's own models. On Claude Code that means Claude models — `sonnet` / `opus` / `fable` aliases.
-- **Provider-CLI runners** *(code mode only)* — other providers' models reached through their CLIs installed on the host (e.g. `codex` → OpenAI models, `opencode` → OpenRouter-served models such as GLM), dispatched as sandboxed, non-interactive shell runs. This lane works on *any* harness that can run commands. Detect availability during recon (`command -v codex opencode`) and note in the run record which lanes this run has.
+- **Provider-CLI runners** *(code mode only)* — other providers' models reached through their CLIs installed on the host (e.g. `codex` → OpenAI models, `opencode` → OpenRouter-served models such as GLM). Each is a **minion platform**: reachable over two transports (a registered MCP server, or sandboxed shell runs — "Dispatch transports" below), and able to spawn its *own* native subagents below itself ("Minion platforms" below). The shell transport works on *any* harness that can run commands. Detect availability during recon (`command -v codex opencode`, plus whether their MCP servers are registered — the tools are visible) and note in the run record which lanes and transports this run has.
 
 **The roster.** Shipped defaults — treat cost as *what the operator actually pays* (subscriptions, included limits), not list price; re-rank to your own billing, and re-score a model after a few real runs. Higher = better on every axis (cost higher = cheaper). Intelligence = how hard a problem the model takes unsupervised; taste = UI/UX, code quality, API design, copy.
 
@@ -45,12 +45,12 @@ Capability economics says *which rung*; the roster says *which model* — and th
 | opus-4.8 | native | 4 | 8 | 8 |
 | fable-5 | native / the session itself | 2 | 9 | 9 |
 
-*(Scores provisional — calibrated so far only against a three-executor bake-off, 2026-07-04: two small, well-specified config-repo plans, which measures execution fidelity, not coding, design, or debugging capability. Re-score after real coding runs. On a harness whose native models differ, substitute its own tiers at the same rungs.)*
+*(gpt-5.5 and glm-5.2 are validated on real coding work: gpt-5.5 leads across most areas; glm-5.2 sits slightly below it and is the standing coding fallback when the `codex` lane is absent or exhausted. The native-tier scores remain provisional — calibrated only against the 2026-07-04 three-executor bake-off (execution fidelity, not coding/design/debugging) — re-score them as real runs land. On a harness whose native models differ, substitute its own tiers at the same rungs.)*
 
 **Per-model calibration** — observed profiles; fold the brief requirements in at dispatch:
 
 - **gpt-5.5** — strict literalist, best protocol fidelity: honors STOP conditions exactly, raises its hand with a precise diagnosis when the plan contradicts itself, never improvises. The cost is one extra round-trip whenever the plan holds a wrinkle a bolder model would resolve itself — budget for it. Best default where deviation must never be silent.
-- **glm-5.2 xhigh** — best bounded judgment and accounting: self-adjudicates within scope and defends the reasoning openly in ASSUMPTIONS rather than stopping or going silent; also the best finder of adjacent issues. Weaknesses: verbose reports, slowest wall-clock, and its lane drops tool junk (`.codegraph/`, `.omo` — opencode tooling) into the tree — sweep for and remove it after every opencode run, before diff review.
+- **glm-5.2 xhigh** — the proven coding alternate: slightly below gpt-5.5 on capability, cheaper per token, and the model the codex lane fails over to. Best bounded judgment and accounting: self-adjudicates within scope and defends the reasoning openly in ASSUMPTIONS rather than stopping or going silent; also the best finder of adjacent issues. Weaknesses: verbose reports, slowest wall-clock, and its lane drops tool junk (`.codegraph/`, `.omo` — opencode tooling) into the tree — sweep for and remove it after every opencode run, before diff review.
 - **sonnet-5** — fastest, cheapest path to a correct result on well-specified mechanical work (one pass, byte-parity with an approved original). Weakness: **silent deviation** — applies pre-adjudicated amendments without surfacing them and leaves the thinnest deviation trail; on a plan where the amendment *hadn't* been adjudicated, that same silence is a REVISE. Its briefs restate the reporting contract explicitly: *record every deviation, however small*.
 
 **Routing rules** — the CEO applies these when staffing the chart:
@@ -73,7 +73,31 @@ Capability economics says *which rung*; the roster says *which model* — and th
 | Worker | gpt-5.5 (`codex`) or glm-5.2 xhigh (`opencode`); sonnet-5 when no CLI lane exists |
 | Executor | per plan: mechanical, well-specified → a CLI lane; taste-sensitive or user-facing diffs → opus-4.8 / sonnet-5 native |
 
-**Dispatch mechanics** (verified command shapes; adjust model ids to the host's config):
+**Dispatch transports** — each provider lane is reachable two ways; prefer MCP where registered, shell everywhere else (all shapes below live-verified, codex 0.142.5 / opencode 1.17.13):
+
+| Transport | codex | opencode | Use when |
+|---|---|---|---|
+| **MCP server** | `codex mcp-server` → tools `codex` (new thread) / `codex-reply` (continue by `threadId`) | vendored `scripts/opencode-mcp.mjs` over `opencode serve` → `opencode_run` / `opencode_fire` / `opencode_status` / `opencode_wait` / `opencode_steer` / `opencode_abort` | orchestrator-side dispatch: structured ids in the result, live progress events, steerable sessions (mid-run on opencode; between turns on codex) |
+| **Shell run** | `codex exec --json` | `opencode run --format json` | no MCP registration; a harness without MCP; or dispatch from *inside a subagent* — subagent→MCP calls fail unreliably on some harnesses, shell is the universal fallback |
+
+One-time registration (Claude Code shown; other MCP clients take the same commands):
+
+```bash
+claude mcp add --scope user codex -- codex mcp-server
+claude mcp add --scope user opencode -- node <explore-repo>/skills/explore/scripts/opencode-mcp.mjs
+```
+
+The wrapper auto-starts `opencode serve` (port 4096; `OPENCODE_PORT` overrides) and roots every call at its `directory` argument, so one server drives every repo and worktree. (Broad alternative: the `opencode-mcp` npm package — ~80 tools; the vendored wrapper stays at six on purpose.)
+
+**MCP call shapes** — arguments mirror the shell flags:
+
+- **Worker**: `codex {prompt, sandbox: "read-only", cwd: <repo-root>, approval-policy: "never", config: {model_reasoning_effort: "<effort>"}}` → final text + `threadId`. `opencode_run {prompt, directory: <repo-root>, model: "openrouter/z-ai/glm-5.2", variant: "xhigh"}` → final text + `session_id`.
+- **Executor**: the same with `sandbox: "workspace-write", cwd: <worktree>` / `directory: <worktree>`. Installs need network: `config: {sandbox_workspace_write: {network_access: true}}`, stated in the run record. An opencode executor over MCP only works where the host's opencode config already grants writes — on a write-gated config it stalls on permission asks, so the shell `opencode run --auto` form below is the executor default for that lane.
+- **REVISE / continue** (the agent finished its turn; you send the next one): `codex-reply {threadId, prompt}` — the live server retains the thread's cwd and sandbox. **The codex thread registry is per-server-process**: if the MCP server restarted since dispatch, fall back to shell `codex exec resume` with confinement restated (below) — thread ids interoperate between the two transports. opencode: `opencode_run {session_id, prompt, directory}`.
+- **Mid-run steer** (the agent is still working and heading wrong): `opencode_steer {session_id, prompt}` aborts the in-flight turn and redirects the same session — a true interrupt; `opencode_fire` → `opencode_status` is the async dispatch-plus-heartbeat pair that makes it possible. codex has no mid-turn interrupt over MCP — steer it between turns (`codex-reply`), or kill the shell run and resume.
+- **opencode permission gating rides the host's opencode config through both transports.** An async run stuck in `running` with no new output is usually a pending permission ask — steer or abort it, or dispatch that unit as a shell `opencode run --auto` confined to the worktree.
+
+**Shell command shapes** (adjust model ids to the host's config):
 
 Read-only worker — Phase-2 lens, audit category, second-opinion review:
 
@@ -84,7 +108,7 @@ opencode run -m openrouter/z-ai/glm-5.2 --variant xhigh --format json --dir <rep
   "<self-contained brief>"
 ```
 
-The read-only guarantees differ by lane: **codex `-s read-only` is an OS-level sandbox** — that worker cannot mutate the tree even if its reasoning goes wrong. **opencode's default-deny permissions are application-level gating**, and config-dependent (a host config that allows edits weakens them) — cheap insurance is the executors' main-tree check (below) after an opencode worker run too. Direct `-o <report-file>` (and any captured stdout) into a scratch directory or a path this skill owns — never into the user's working tree (the analyzers' `--output` rule, applied to runners). The `--json` / `--format json` event streams are where the **session id** for steering comes from — capture it at dispatch.
+The read-only guarantees differ by lane: **codex `-s read-only` is an OS-level sandbox** — that worker cannot mutate the tree even if its reasoning goes wrong. **opencode's default-deny permissions are application-level gating**, and config-dependent (a host config that allows edits weakens them) — cheap insurance is the executors' main-tree check (below) after an opencode worker run too. Direct `-o <report-file>` (and any captured stdout) into a scratch directory or a path this skill owns — never into the user's working tree (the analyzers' `--output` rule, applied to runners).
 
 Executor — `--execute-level`, confined to the disposable worktree:
 
@@ -109,7 +133,14 @@ cd <repo-root> && codex exec resume <session-id> -c sandbox_mode="read-only" "<n
 opencode run -s <session-id> --dir <repo-root> "<narrowed brief>"
 ```
 
-Session ids come from the dispatch's `--json` / `--format json` events; `codex exec resume --last` and `opencode run -c` (continue-last) are fallbacks **only when a single dispatch is in flight**. The main-tree check runs after *every* CLI round that can write — not just the first.
+Session ids: the MCP transport returns them structured (`threadId` / `session_id` in the tool result); the shell transport emits them in the JSONL events (`thread.started` carries `thread_id`). `codex exec resume --last` and `opencode run -c` (continue-last) are fallbacks **only when a single dispatch is in flight**. The main-tree check runs after *every* CLI round that can write — not just the first.
+
+**Minion platforms — tier-3 nesting.** Both lanes can spawn their *own* native subagents, so one lane dispatch can be a **manager with minions** instead of a single worker:
+
+- **codex**: `multi_agent` (stable and default-on at 0.142.5) — collab tools `spawn_agent` / `wait` / `close_agent`, child threads at depth 1 by default. Codex spawns **only when the brief explicitly asks** ("spawn one worker per X, wait for all, merge").
+- **opencode**: task-tool subagents (built-ins `explore` / `general`, or named agents from the host's config); child sessions are inspectable at `GET /session/{id}/children`. A subagent's model is fixed by its agent config, not chooseable per call — pre-declare one agent per role×tier where that matters.
+
+Two rules keep nesting inside the org chart. **The `--depth` caps bound total concurrent agents *including* platform-spawned minions** — the platform's spawns don't report to the harness, so a fan-out brief must carry its own cap ("at most N minions"). And **a platform that fans out is a manager**: its brief carries the end goal and direction, it vets its minions' returns before reporting one merged result up, and Phase-3 vetting of that merged result still happens on your side.
 
 **Effort mapping** — `--execute-level` (and the auto-pick) translated per lane:
 
@@ -120,12 +151,14 @@ Session ids come from the dispatch's `--json` / `--format json` events; `codex e
 | high | `high` | `high` | high |
 | max | `xhigh` | `xhigh` | max |
 
+The same values ride both transports: codex takes `-c model_reasoning_effort=<v>` on shell and `config: {model_reasoning_effort: "<v>"}` over MCP; opencode takes `--variant <v>` on shell and `variant: "<v>"` over MCP.
+
 **CLI-runner constraints** — so the org chart holds across lanes:
 
-- **One run = one unit.** A CLI run emits no mid-run heartbeat; its single terminal return *is* the heartbeat. Keep CLI briefs one well-specified unit small, and apply spiral detection *across runs* — a resumed run that restates its previous return rather than advancing is a spiral signal.
+- **One shell run = one unit.** A shell run emits no mid-run heartbeat; its single terminal return *is* the heartbeat. Keep those briefs one well-specified unit small, and apply spiral detection *across runs* — a resumed run that restates its previous return rather than advancing is a spiral signal. The MCP transport loosens this: `opencode_status` polls are real heartbeats (and codex streams progress events where the harness surfaces them), so longer units are steerable there — the steering protocol below applies to them unchanged.
 - **Briefs carry identical obligations:** self-contained (Hard Rule 3), Hard Rules 4 and 6 verbatim, the raise-hand rule verbatim, the report format when executing — and they compress under `--caveman` exactly like native subagent prompts (auto-clarity holds).
 - **Returns are vetted like any worker's** — Phase-3 confirmation against the code before anything is recorded. A different provider does not change the trust model: a return is a claim, not a fact, and Rule 6 applies to what the runner read *and* to what it sent back.
-- **Preflight before staffing a lane:** the CLI exists, is authenticated, and the model answers (a one-line ping if in doubt). A lane failing mid-run is a **reassign** steer — move the unit to the next lane and record it; never route around a failed lane by silently spending the session model.
+- **Preflight before staffing a lane:** the CLI exists, is authenticated, and the model answers (a one-line ping if in doubt); pick the transport while you're there (MCP tools visible → MCP; else shell). A lane failing mid-run is a **reassign** steer — move the unit to the next lane and record it; never route around a failed lane by silently spending the session model.
 
 ## Spiral detection
 
@@ -160,7 +193,7 @@ Dispatch is not fire-and-forget. A **heartbeat** is any interim signal an agent 
 | `--sub-continuous` | claim-board status changes and per-agent `### <agent-id>` blocks on the blackboard head-doc |
 | Phase 5 (`--execute-level`) | the executor's STATUS report; each REVISE-round reply |
 | Manager rung | the manager's report per merged worker result |
-| Provider-CLI runner | its single terminal return (or the JSONL event stream, when watched live) — one run, one heartbeat |
+| Provider-CLI runner | shell: its single terminal return (or the JSONL event stream, when watched live) — one run, one heartbeat. MCP: `opencode_status` polls / codex progress events — real interim heartbeats |
 
 On each heartbeat, answer three questions — **advancing? still aimed at the end goal? still needed?** — and steer accordingly:
 
