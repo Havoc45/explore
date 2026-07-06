@@ -60,18 +60,44 @@ Research across real repositories is unambiguous — **developer-curated** `AGEN
 
 Keep it short — every line competes for the model's instruction budget on **every** session. Relevance, not length, is the test.
 
+## Knoxville handoff — docs-vault integration
+
+[Knoxville](https://github.com/Havoc45/Knoxville) is a docs-vault tool (Node CLI + MCP server, *not* a Claude Code plugin) that keeps repos documentation-free: real `CLAUDE.md`/`AGENTS.md`/docs live in a central vault (default `~/Documents/Vaults/Projects/<project>/`), and the repo carries only a **gitignored stub** `CLAUDE.md` whose first line is `<!-- knoxville-stub -->`, an `AGENTS.md` symlink pointing *at* it (the inverse of this skill's default direction), and a `.knoxville.json` link marker. **`--init` — and any first run of this skill in a repo — checks for Knoxville before writing agent-context files**, because writing the standard primer over a Knoxville stub breaks the vault link.
+
+**Detect, cheapest first:**
+
+1. Repo already linked — `.knoxville.json` at the repo root, or `CLAUDE.md` starting `<!-- knoxville-stub -->`.
+2. MCP server `knoxville` registered — the `docs_*` tools are visible (`docs_init`, `docs_context`, `docs_create`, …).
+3. `command -v knoxville` (binary exists after `npm link` or a published install).
+4. Config/vault: `~/.config/knoxville/config.json` (or `$KNOXVILLE_CONFIG`), vault dir `~/Documents/Vaults/Projects`.
+
+**Then branch:**
+
+- **Repo linked** → do **not** write `AGENTS.md`/`CLAUDE.md` at the root (the stub and symlink are Knoxville's, direction inverted and gitignored). The primer content goes **into the vault** instead: `docs_create`/`docs_update` under the project's `agents/` folder over MCP, and the deeper-context pointers reference the vault docs (`docs_context` is the session entry point). The rest of `--init` recon (real commands, conventions, landmines) is unchanged — only the destination moves.
+- **Knoxville available, repo not linked** → invoke its init **on the user's behalf**: call the `docs_init` MCP tool (the programmatic equivalent of `knoxville init`; if it returns a `needs_decision` payload — vault bootstrap choice, name collision, second-link guard — relay the options to the user and re-call with their answer: `bootstrap` / `mismatchAction` / `existingFolder` / `confirmSecondLink`). No MCP registered but binary on PATH → `knoxville init` is interactive (prompt-driven), so ask the user to run it themselves, then continue. After linking, write the primer into the vault as above.
+- **Not installed** → recommend it once and offer to set it up on the user's behalf (as of 2026-07 the npm package is unpublished — `npx knoxville` does not work yet):
+
+  ```bash
+  git clone https://github.com/Havoc45/Knoxville.git
+  cd Knoxville && npm install && npm run build
+  claude mcp add --scope user knoxville -- node "$PWD/dist/cli.js" serve
+  ```
+
+  (A local clone may already exist — check `~/Documents/Projects/Knoxville` first.) If the user declines, fall through to the standard `AGENTS.md` + `CLAUDE.md`-symlink flow below.
+
 ## Procedure
 
 1. **Recon first** (Hard Rule 7) — the commands, conventions, and constraints in the primer must be the *real* ones, pulled from manifests, CI, and configs, not assumed. If `docs/system-design-reference/` and/or `plans/` exist (or are produced in the same run), add the pointers; otherwise omit those lines.
-2. **Write `AGENTS.md`** at the repo root from the template, filled with curated content.
+2. **Knoxville check** (section above) — a linked or installable vault redirects where the primer lands; only the no-Knoxville path continues to steps 3–4 as written.
+3. **Write `AGENTS.md`** at the repo root from the template, filled with curated content.
    - **If `AGENTS.md` already exists**: do not clobber. Update only the content between the `explore:begin`/`explore:end` markers; leave everything the user wrote outside them untouched. If the markers are absent, append a fresh managed block and say so — never overwrite hand-written context.
-3. **Create the `CLAUDE.md` symlink** pointing at `AGENTS.md`:
+4. **Create the `CLAUDE.md` symlink** pointing at `AGENTS.md`:
    ```bash
    ln -s AGENTS.md CLAUDE.md      # relative symlink, repo root
    ```
    - **If `CLAUDE.md` already exists** and is not already this symlink (or an `@AGENTS.md` import), do not overwrite — report it and let the user decide.
    - **Windows / no symlink support**: if `ln -s` isn't available or the filesystem rejects it, fall back to a one-line `CLAUDE.md` containing the import `@AGENTS.md` (Claude Code resolves it), and note the fallback so the user knows it's a stub, not a link.
-4. **Report** what was written: the two files, whether `CLAUDE.md` is a symlink or an import stub, and a one-line reminder that the primer is intentionally lean and should be hand-tuned over time.
+5. **Report** what was written: the two files (or the vault destination, on the Knoxville path), whether `CLAUDE.md` is a symlink or an import stub, and a one-line reminder that the primer is intentionally lean and should be hand-tuned over time.
 
 ## With `--caveman`
 

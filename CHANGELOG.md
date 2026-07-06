@@ -4,6 +4,63 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.10.0] — 2026-07-06
+
+### Added
+- **Model labeling rule** (`references/delegation.md`; pointer in SKILL.md "Model &
+  effort assignment"): every running dispatch announces its **true** model — agent
+  labels `gpt-5.5:<task>`, shell-run descriptions `[glm-5.2] <run>`, worktree paths
+  `<plan-id>-<model>/`, run-record lines `model @ effort via lane`. A wrapper agent
+  shows the harness its own model, so the label is the only truth about who is
+  actually working.
+- **Codex lane quirks** (`delegation.md`): runs outlive harness shell caps (10-min
+  Bash default — background + poll for the `-o` report file; the report file, not
+  process exit, is the completion signal); **stdin hang** — `codex exec` blocks
+  forever reading a non-TTY stdin, always append `</dev/null` (hit live on
+  0.142.5); `--output-schema` (structured final message), `--add-dir` (extra
+  writable dir), `--skip-git-repo-check`, `--ephemeral` (no resume), model default
+  from `~/.codex/config.toml`.
+- **Computer-use verification lane** (`delegation.md`; review step 7 in
+  `closing-the-loop.md`): gpt-5.5 via codex as the local runtime observer — UI
+  flows, browser automation, simulators, app launching, screenshots. Artifact dir →
+  self-contained prompt → `codex exec -C <root> --add-dir "$ARTIFACT_DIR"
+  -s danger-full-access -o "$REPORT"` → read report + screenshots. Carved out as the
+  **only** sanctioned `danger-full-access` use (observe-and-report briefs only;
+  `workspace-write` for non-GUI runtime checks). Live-verified end-to-end
+  (screenshot capture PASS).
+- **Wrapper pattern for gpt-5.5 inside native workflow fan-outs** (`delegation.md`):
+  thin low-effort native wrapper writes the codex prompt, shells out, returns the
+  report; `gpt-5.5:` label mandatory; parallel codex implementers need worktree
+  isolation; harness token budgets count only native tokens — codex work is
+  invisible to them.
+- **Big-queue parallelism** (`delegation.md` flag interplay; dispatch section of
+  `closing-the-loop.md`): independent queued plans (pairwise-disjoint in-scope
+  paths, no dependency edges) execute concurrently, one executor per plan in its
+  own worktree, CLI lanes staffed first, bounded by the `--depth` cap; reviews stay
+  serial with the CEO. When in doubt, sequence.
+- **Knoxville docs-vault handoff** (`references/init.md`; SKILL.md recon +
+  `--init` row): detect a linked vault (`.knoxville.json`, stub `CLAUDE.md`
+  starting `<!-- knoxville-stub -->`, registered `knoxville` MCP server, PATH
+  binary, config/vault dirs); linked → the `--init` primer lands **in the vault**
+  (`docs_create`/`docs_update`), repo root untouched; installed-not-linked →
+  invoke `docs_init` over MCP on the user's behalf (relaying `needs_decision`
+  round-trips); absent → recommend and offer clone → build → `claude mcp add`
+  setup (npm package unpublished as of 2026-07).
+
+### Changed
+- **Roster: gpt-5.5 primacy** (`delegation.md`): included quota runs **~30× any
+  Claude tier's** — effectively free; default coding workhorse, standing
+  independent second-opinion reviewer, and the computer-use verification agent.
+  Routing rule 5 widened from bulk/mechanical to coding generally; rule 7 now
+  defaults second opinions to gpt-5.5, commissioned liberally.
+- **Roster: glm-5.2 taste 5 → 4** (design taste a notch below gpt-5.5's); made the
+  explicit coding fallback for **both** gpt-5.5 (lane absent/exhausted) and
+  opus-4.8 (native-quota preservation).
+- **Executor preamble** (`closing-the-loop.md`) carries operator style prefs:
+  concise simple solutions; verify via check commands (typecheck/lint/targeted
+  tests), no dev servers, no builds unless the plan says so; TypeScript never
+  `any` unless the plan allows; keep the repo's existing package manager.
+
 ## [2.9.0] — 2026-07-06
 
 ### Added
@@ -317,6 +374,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.10.0]: https://github.com/Havoc45/explore/releases/tag/v2.10.0
 [2.9.0]: https://github.com/Havoc45/explore/releases/tag/v2.9.0
 [2.8.1]: https://github.com/Havoc45/explore/releases/tag/v2.8.1
 [2.8.0]: https://github.com/Havoc45/explore/releases/tag/v2.8.0

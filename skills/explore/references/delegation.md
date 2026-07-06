@@ -40,16 +40,16 @@ Capability economics says *which rung*; the roster says *which model* — and th
 | Model | Lane | Cost | Intelligence | Taste |
 |---|---|---|---|---|
 | gpt-5.5 | `codex` CLI | 9 | 8 | 5 |
-| glm-5.2 xhigh | `opencode` CLI | 8 | 7 | 5 |
+| glm-5.2 xhigh | `opencode` CLI | 8 | 7 | 4 |
 | sonnet-5 | native | 6 | 6 | 7 |
 | opus-4.8 | native | 4 | 8 | 8 |
 | fable-5 | native / the session itself | 2 | 9 | 9 |
 
-*(gpt-5.5 and glm-5.2 are validated on real coding work: gpt-5.5 leads across most areas; glm-5.2 sits slightly below it and is the standing coding fallback when the `codex` lane is absent or exhausted. The native-tier scores remain provisional — calibrated only against the 2026-07-04 three-executor bake-off (execution fidelity, not coding/design/debugging) — re-score them as real runs land. On a harness whose native models differ, substitute its own tiers at the same rungs.)*
+*(gpt-5.5 and glm-5.2 are validated on real coding work: gpt-5.5 leads across most areas, and its included quota runs **~30× any Claude tier's** (Fable included) — treat it as effectively free, route coding volume there first, and commission it liberally for extra independent reviews. glm-5.2 sits slightly below it — design taste a notch lower than gpt-5.5's — and is the standing coding fallback for **both** gpt-5.5 (lane absent/exhausted) and opus-4.8 (native quota worth preserving). The native-tier scores remain provisional — calibrated only against the 2026-07-04 three-executor bake-off (execution fidelity, not coding/design/debugging) — re-score them as real runs land. On a harness whose native models differ, substitute its own tiers at the same rungs.)*
 
 **Per-model calibration** — observed profiles; fold the brief requirements in at dispatch:
 
-- **gpt-5.5** — strict literalist, best protocol fidelity: honors STOP conditions exactly, raises its hand with a precise diagnosis when the plan contradicts itself, never improvises. The cost is one extra round-trip whenever the plan holds a wrinkle a bolder model would resolve itself — budget for it. Best default where deviation must never be silent.
+- **gpt-5.5** — strict literalist, best protocol fidelity: honors STOP conditions exactly, raises its hand with a precise diagnosis when the plan contradicts itself, never improvises. The cost is one extra round-trip whenever the plan holds a wrinkle a bolder model would resolve itself — budget for it. Best default where deviation must never be silent. Effectively free (quota note above): the default coding workhorse, the standing second-opinion reviewer, and the computer-use verification agent (lane below).
 - **glm-5.2 xhigh** — the proven coding alternate: slightly below gpt-5.5 on capability, cheaper per token, and the model the codex lane fails over to. Best bounded judgment and accounting: self-adjudicates within scope and defends the reasoning openly in ASSUMPTIONS rather than stopping or going silent; also the best finder of adjacent issues. Weaknesses: verbose reports, slowest wall-clock, and its lane drops tool junk (`.codegraph/`, `.omo` — opencode tooling) into the tree — sweep for and remove it after every opencode run, before diff review.
 - **sonnet-5** — fastest, cheapest path to a correct result on well-specified mechanical work (one pass, byte-parity with an approved original). Weakness: **silent deviation** — applies pre-adjudicated amendments without surfacing them and leaves the thinnest deviation trail; on a plan where the amendment *hadn't* been adjudicated, that same silence is a REVISE. Its briefs restate the reporting contract explicitly: *record every deviation, however small*.
 
@@ -59,9 +59,9 @@ Capability economics says *which rung*; the roster says *which model* — and th
 2. **The Lane column binds.** A roster model is dispatched only through its listed lane. OpenRouter also serves Claude models (`openrouter/anthropic/claude-sonnet-5`, …), so the `opencode` lane *can* reach them — never route it: that swaps included-subscription quota for pay-per-token spend, drops the harness's native dispatch surface, and voids rule 7's different-provider independence (and `--variant` flags are silently ignored off glm-5.2, so effort quietly vanishes). Rule 1 offloads worker-tier *units* to cheaper CLI-lane models; it never re-lanes a Claude model. A named model unavailable on its lane falls back *within* the lane: native Claude tiers descend to the **sonnet-4.6 floor** — never lower, never Haiku (rule 8), never sideways into a CLI lane; an unavailable CLI-lane model is a preflight **reassign** (constraints below).
 3. **Defaults, not limits.** Standing permission to escalate: judge the output, not the price tag. A cheaper model's return that doesn't meet the bar is redone one tier up without asking — escalating costs less than shipping mediocre work (the escalation ladder already encodes this).
 4. **Intelligence > taste > cost** when axes conflict for anything that ships; cost is a tie-breaker only.
-5. **Bulk/mechanical work** (clear-spec execution, migrations, data analysis, lens sweeps) → gpt-5.5. glm-5.2 xhigh is the second bulk lane — an independent perspective, or the substitute when `codex` is absent or its limits exhausted.
+5. **Coding and bulk/mechanical work** (clear-spec execution, migrations, data analysis, lens sweeps) → gpt-5.5, as much of it as clears the taste bar — at ~30× Claude quota it is effectively free, so don't ration it. Don't let cost pick the wrong model either way: use the cheap lane to gather information and try things *before* moving work to an expensive tier. glm-5.2 xhigh is the second bulk lane — an independent perspective, or the substitute when `codex` is absent or its limits exhausted (and the coding fallback for opus-4.8 when native quota should be preserved).
 6. **Anything user-facing** (UI, copy, API design) needs taste ≥ 7 — a Claude tier, on the native lane (rule 2).
-7. **Verdicts and reviews stay with the CEO.** Optionally commission one independent second-opinion review from a *different provider* (read-only CLI run) — advisory input to the verdict, never the verdict itself.
+7. **Verdicts and reviews stay with the CEO.** Plan/implementation reviews sit at fable-5 or opus-4.8; additionally commission an independent second-opinion review from a *different provider* (read-only CLI run — default gpt-5.5, near-free at its quota, so do it liberally on anything non-trivial) — advisory input to the verdict, never the verdict itself.
 8. **Never staff Haiku.** The cheap tier is a CLI lane — or sonnet-5 at low effort when no CLI is installed (floor per rule 2: sonnet-4.6).
 
 **Rung staffing with the roster:**
@@ -72,6 +72,13 @@ Capability economics says *which rung*; the roster says *which model* — and th
 | Manager | opus-4.8 (native); fable-5 for the hardest campaign legs |
 | Worker | gpt-5.5 (`codex`) or glm-5.2 xhigh (`opencode`); sonnet-5 when no CLI lane exists |
 | Executor | per plan: mechanical, well-specified → a CLI lane; taste-sensitive or user-facing diffs → opus-4.8 / sonnet-5 native |
+
+**Model labeling — every running thing announces its model.** The harness UI shows *its own* model for a wrapper agent and nothing at all for a shell run, so the label is often the only truth about who is actually working. The rule, applied to every dispatch without exception:
+
+- **Agents / subagents / workflow calls**: label (or description) starts with the true worker's model — `gpt-5.5:review-auth`, `glm-5.2:lens-data`, `opus-4.8:manager-billing`. For a wrapper (a native agent that shells out to a CLI lane), the prefix names the *real* worker, not the wrapper — the UI will show the wrapper's Claude model, so the label is the only indication the work is gpt-5.5's.
+- **Shell runs**: the run's stated description carries the model — `[gpt-5.5] audit: security lens`, so a background `codex`/`opencode` process is identifiable at a glance.
+- **Worktrees & branches**: encode plan and model in the path — worktree `../<repo>-wt/<plan-id>-gpt-5.5/`, generated branches stay `advisor/<plan-id>` (the worktree path carries the model; a branch name outlives the run and shouldn't).
+- **Run record / heartbeat log**: every dispatch line states model + effort + lane (`gpt-5.5 @ high via codex-MCP`), so the record is reproducible and a stuck run is attributable without archaeology.
 
 **Dispatch transports** — each provider lane is reachable two ways; prefer MCP where registered, shell everywhere else (all shapes below live-verified, codex 0.142.5 / opencode 1.17.13):
 
@@ -119,7 +126,7 @@ opencode run -m openrouter/z-ai/glm-5.2 --variant <high|xhigh> --format json --d
   "<plan, inlined, + executor preamble>"
 ```
 
-The two lanes confine differently — know which guarantee you're holding. **codex `workspace-write` rooted at the worktree is an OS-level sandbox** — writes outside it are blocked by construction, so Hard Rules 1–2 hold mechanically; prefer this lane for execution when both exist. (It also blocks *network* by default — a plan whose steps need dependency installs either gets `-c sandbox_workspace_write.network_access=true` on dispatch, stated in the run record since it widens the sandbox to the network, or the orchestrator pre-installs dependencies in the worktree before dispatching.) **opencode `--auto` is permission auto-approval, not filesystem confinement** — the worktree boundary rides on the brief and on review: after any `--auto` run, verify the user's working tree is untouched (`git -C <repo-root> status --porcelain` unchanged) *before* reviewing the worktree diff, and treat any main-tree write as an automatic BLOCK. Keep `-o <report-file>` inside the worktree or scratch. Never `danger-full-access`; never `--auto` outside a worktree.
+The two lanes confine differently — know which guarantee you're holding. **codex `workspace-write` rooted at the worktree is an OS-level sandbox** — writes outside it are blocked by construction, so Hard Rules 1–2 hold mechanically; prefer this lane for execution when both exist. (It also blocks *network* by default — a plan whose steps need dependency installs either gets `-c sandbox_workspace_write.network_access=true` on dispatch, stated in the run record since it widens the sandbox to the network, or the orchestrator pre-installs dependencies in the worktree before dispatching.) **opencode `--auto` is permission auto-approval, not filesystem confinement** — the worktree boundary rides on the brief and on review: after any `--auto` run, verify the user's working tree is untouched (`git -C <repo-root> status --porcelain` unchanged) *before* reviewing the worktree diff, and treat any main-tree write as an automatic BLOCK. Keep `-o <report-file>` inside the worktree or scratch. Never `danger-full-access` for workers or executors — the **computer-use verification lane** below is the one sanctioned exception; never `--auto` outside a worktree.
 
 Steering / REVISE — continue the same session instead of re-briefing from zero. **A resumed run inherits no confinement you don't restate**: `codex exec resume` has no `-s`/`-C` flags and re-roots its sandbox at the *invocation cwd* — resuming an executor from the repo root would put the user's tree inside the write scope. Always resume from the same working root and re-pass the dispatch's confinement:
 
@@ -134,6 +141,41 @@ opencode run -s <session-id> --dir <repo-root> "<narrowed brief>"
 ```
 
 Session ids: the MCP transport returns them structured (`threadId` / `session_id` in the tool result); the shell transport emits them in the JSONL events (`thread.started` carries `thread_id`). `codex exec resume --last` and `opencode run -c` (continue-last) are fallbacks **only when a single dispatch is in flight**. The main-tree check runs after *every* CLI round that can write — not just the first.
+
+**Codex lane quirks** — verified on codex-cli 0.142.5; know these before dispatching:
+
+- **Timeout.** A codex run routinely outlives a harness shell tool's cap (Claude Code Bash: 10 min default). Either pass an explicit generous timeout, or — better for anything non-trivial — run it in the background and poll for the `-o <report-file>` to appear; the report file, not the process exit, is the completion signal.
+- **Stdin hang.** `codex exec` reads stdin whenever it isn't a TTY (`Reading additional input from stdin...`) — a background or harness shell leaves the pipe open and the run blocks forever *before doing anything*. Always close it: `codex exec … "<prompt>" </dev/null`. (Hit live on 0.142.5.)
+- **`-o <file>`** writes only the *final* agent message — capture stdout separately (`--json` JSONL events) if you need the trail.
+- **`--output-schema <file>`** (JSON Schema) forces a structured final response — use it when the orchestrator must parse the result instead of reading prose.
+- **`--add-dir <dir>`** grants an extra writable directory alongside the sandbox root — how a read-confined or repo-confined run gets a scratch/artifact directory.
+- **`--skip-git-repo-check`** is required whenever `-C` points outside a git repo (scratch dirs, artifact dirs).
+- **`--ephemeral`** skips session persistence — no resume possible; don't use it for anything that might need a REVISE round.
+- **Model default** rides `~/.codex/config.toml` (gpt-5.5 here) — name `-m` only to deviate.
+- Resume re-roots and drops confinement — already covered above; it is the sharpest quirk of the lot.
+
+**Computer-use verification lane (codex)** — gpt-5.5 through `codex` is also the **local verification agent** for work that needs a real runtime observed: driving a UI flow, browser automation, iOS/Android simulators, launching a desktop app, capturing screenshots, or any independent runtime check outside the orchestrator's own context. Not for ordinary code reading, typecheck, lint, or tests a normal worker can run. In this skill it slots in as an *observer*, mainly at Phase-5 review time (verify an executed diff actually behaves — see `closing-the-loop.md`) and during recon/audit when a finding needs runtime confirmation. The flow (live-verified end-to-end):
+
+```bash
+ARTIFACT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/codex-computer-use.XXXXXX")"
+REPORT="$ARTIFACT_DIR/report.md"
+PROMPT="$ARTIFACT_DIR/prompt.md"
+
+# 1. Write a self-contained prompt to $PROMPT: repo/worktree path, the exact
+#    flow to drive, constraints (what NOT to touch), $ARTIFACT_DIR as the only
+#    write target, and the report format. Then:
+codex exec \
+  -C "$PWD" \
+  --add-dir "$ARTIFACT_DIR" \
+  -s danger-full-access \
+  -o "$REPORT" \
+  "$(cat "$PROMPT")" </dev/null    # close stdin — see the stdin-hang quirk
+# 2. Read $REPORT, inspect/reference the screenshot paths, summarize.
+```
+
+Sandbox selection: `-s danger-full-access` **only** for genuine GUI automation, simulators, desktop app launching, screenshots, or access outside the repo — it is unsandboxed, so the brief itself is the only constraint: keep it observe-and-report, never destructive. For non-GUI runtime checks that need only the repo + artifact dir, prefer `-s workspace-write`. Add `--skip-git-repo-check` when `-C` isn't a git repo. Artifacts and report live in `$ARTIFACT_DIR` (scratch), never the user's tree. Launching apps/simulators/browsers to verify the requested work needs no permission ask; anything that would disrupt the user's environment beyond that (closing their apps, changing system settings, acting on real accounts or data) does. Label the run `[gpt-5.5] computer-use: <flow>` per the labeling rule.
+
+**gpt-5.5 inside native workflow fan-outs (wrapper pattern).** A harness's workflow/agent `model` parameter takes only native models — it cannot name gpt-5.5. To put codex work inside a native fan-out, spawn a **thin native wrapper** (cheapest native tier, low effort) whose brief is: write the self-contained codex prompt, run `codex exec` via shell, return the report (structured output on the wrapper if the harness supports it). Rules that keep the pattern honest: label the wrapper `gpt-5.5:<task>` (labeling rule above — the UI shows the wrapper's model, the label is the only truth); parallel codex *implementation* wrappers each get an isolated worktree, or their edits collide in the shared checkout; and a harness token budget counts only native tokens — codex work is invisible to it, so budget math must not read "cheap" as "idle".
 
 **Minion platforms — tier-3 nesting.** Both lanes can spawn their *own* native subagents, so one lane dispatch can be a **manager with minions** instead of a single worker:
 
@@ -212,4 +254,5 @@ Use direct agent messaging where the harness supports it (fast path), but **reco
 - **`--depth`**: `quick` = no managers, ≤1 worker; `standard` = CEO + workers (≤4 concurrent); `deep` = managers allowed (≤8 concurrent). The caps bound **total** concurrent agents, manager-spawned workers included — a manager rung re-slices the cap, it doesn't raise it. (Under `--sub-continuous`, the live budget replaces these caps.)
 - **`--caveman`** compresses heartbeat transport; evidence stays verbatim, and auto-clarity holds for anything security-relevant or ambiguous.
 - **`--sub-continuous`**: heartbeats ride the blackboard; when the throttle ladder cuts spend, cut *native* worker concurrency first — offload lanes don't draw the quota pool (`sub-continuous.md` pre-flight §5). The manager's merge and the CEO's judgment are the last things to cut, because unjudged raw output is the real waste.
+- **Big queues parallelize by lane and worktree.** When many units are queued (a full audit sweep, several executable plans), don't serialize by reflex: read-only units fan out across the CLI lanes and native workers up to the `--depth` cap; *writing* units (executors) parallelize only when their plans' in-scope paths are disjoint and no plan depends on another — then each runs in its **own worktree** (`<plan-id>-<model>` path per the labeling rule), one executor per plan, CLI lanes first (quota rule 1). Review stays serial and stays with the CEO. Scope overlap or a dependency edge → those plans run in sequence; when in doubt, sequence — a merge conflict costs more than the parallelism saves.
 - **No-subagent harness**: the chart collapses to one agent working rung by rung, lens by lens — and the guardrails still bind: watch *yourself* for the same spiral signals, and on detecting one, stop, decide the blocking question at full capability, then continue mechanically.

@@ -53,6 +53,8 @@ Executor model: what the user named if they named one (`execute 003 gpt-5.5` / `
 
 Either lane, one executor at a time per plan.
 
+**Queued plans can run in parallel — one worktree each.** When several plans are dispatch-ready, parallelize the *independent* ones: no dependency edges between them in `plans/README.md`, and pairwise-disjoint in-scope paths. Each gets its own executor in its own worktree/branch (worktree path `<plan-id>-<model>`, per the labeling rule in `delegation.md`), CLI lanes staffed first (quota preservation), total concurrency bounded by the `--depth` cap. Overlapping scope or a dependency edge → sequence those; when in doubt, sequence. Reviews are rendered serially by the advisor as each executor reports — dispatch parallelizes, judgment doesn't.
+
 The executor brief — either lane: the subagent prompt, or the CLI run's prompt — must contain:
 
 1. **The full plan file text, inlined.** The worktree contains only committed files — if `plans/` is uncommitted, the executor can't read it. Never assume; always inline.
@@ -78,7 +80,12 @@ The executor brief — either lane: the subagent prompt, or the CLI run's prompt
 >   assumption. If you're unsure *whether* something works, don't ask — run a
 >   small, localized experiment in this worktree and report hypothesis + result.
 > • If you see a materially better approach (especially long-lasting, not
->   stylistic), note it — briefly, without relitigating style.
+>   stylistic), note it — briefly, without relitigating style. Always prefer
+>   the concise, simple solution that fully solves it.
+> • Verify with the repo's check commands (typecheck, lint, targeted tests) —
+>   don't start dev servers, and don't run builds unless a plan step says to.
+>   In TypeScript, never introduce `any` unless the plan explicitly allows it.
+>   Use the repo's existing package manager; never swap in another.
 > • **Raise your hand:** if, from what you can see, the plan appears mis-aimed —
 >   a file doesn't do what the plan assumes, the approach contradicts what you
 >   find — STOP and say so. Do not complete a task you can see is pointed wrong.
@@ -118,7 +125,9 @@ Review like a tech lead reviewing a PR against the spec — never fix anything y
 5. **Check no existing behaviour was weakened to shrink the diff** (execution principle 2): a deleted validation branch, a dropped UI/error state, a loosened type, a removed guard. If the diff achieves "less code" by quietly removing behaviour the task didn't ask to remove, that's a REVISE/BLOCK regardless of whether the done criteria pass.
 6. **Read the accounting** (NOT DONE / ASSUMPTIONS / SMELLS). Confirm the assumptions are acceptable (and escalate any 1(a) assumption on a costly-to-reverse decision to the user), and carry forward unaddressed SMELLS as candidate findings for the next `--improve`/`--reconcile` rather than letting them vanish.
 
-For high-risk diffs (security, schema, public API), optionally commission one independent **second-opinion review from a different provider** — a read-only CLI run over the worktree (e.g. `codex exec -s read-only -C <worktree> "<review brief: the plan + what to judge>"`). Its findings are advisory input to your verdict; the verdict stays yours (org chart: verdicts never move down — or out).
+For anything non-trivial — and always for high-risk diffs (security, schema, public API) — commission an independent **second-opinion review from a different provider**: a read-only CLI run over the worktree (default gpt-5.5, near-free at its quota: `codex exec -s read-only -C <worktree> "<review brief: the plan + what to judge>"`). Its findings are advisory input to your verdict; the verdict stays yours (org chart: verdicts never move down — or out).
+
+7. **Verify runtime behaviour for UI-facing or runtime-sensitive diffs.** Done criteria and tests prove the code checks out, not that the flow *behaves*. Commission a **computer-use verification run** (the codex lane in `delegation.md`, "Computer-use verification lane"): point it at the worktree, give it the exact flow the plan changed, an artifact directory, and a report format; read its report and screenshots as evidence in the verdict. Label it `[gpt-5.5] computer-use: <flow>`.
 
 ### Verdict
 
