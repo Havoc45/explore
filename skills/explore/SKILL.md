@@ -4,7 +4,7 @@ description: Explore a codebase as a read-only senior architect-advisor and char
 license: MIT
 metadata:
   author: Havoc45
-  version: "2.10.0"
+  version: "2.11.0"
 ---
 
 # Explore
@@ -52,7 +52,7 @@ Invoked as `explore [flags] ["<description>"]`. With **no action flag**, it expl
 | `--caveman[=<lite\|full\|ultra\|wenyan-…>]` | `full` (when bare) | Compress **subagent ↔ orchestrator** traffic and `sub-continuous` scratch to save context/tokens; the human deliverable stays at `--verbosity`. See `references/caveman.md`. |
 | `--model=<model \| plan:model,…>` | auto | Assign model(s) to dispatched subagents/executors. Default: the orchestrator auto-selects the best-fit model per plan. See "Model & effort". |
 | `--focus=<area>` | — | Scope exploration to one subsystem (`--focus=auth`). A plan-file argument routes to `--review`. |
-| `--sub-continuous[=<handle>\|new]` | — | Budget-aware, resumable, multi-session exploration — paces subagents against the live quota (throttle ladder); on hitting paid credits it drains in-flight work, checkpoints, and stops, never continuing on credits without explicit consent. See `references/sub-continuous.md`. |
+| `--sub-continuous[=<handle>\|new]` | — | Budget-aware, resumable, multi-session exploration — paces subagents against the live quota (throttle ladder), checkpoints gracefully before 90% of the window is spent, and schedules its own resume at the quota reset (the refresh loop); on hitting paid credits it drains in-flight work, checkpoints, and stops, never continuing on credits without explicit consent. See `references/sub-continuous.md`. |
 | `--issues` | — | *(code mode only)* Also publish written plans as GitHub issues (public-repo safety check first). See `references/closing-the-loop.md`. |
 | `--reference=<path>[,<path>…]` | — | Extra context the maintainer has written — design notes, a spec, an API doc, a domain glossary. Ingested as ground truth during recon (Rule 7), cited like any other source. Repeatable. |
 | `--code-mode=<yes\|no>` | `yes` | `yes` (default) assumes a code CLI/harness (e.g. Claude Code) — the full lifecycle including execution is available. `no` assumes a chat surface — **planning only**: explore, audit, and write the ADRs and plans, but never execute, dispatch, or touch git. See "Execution mode". |
@@ -123,7 +123,7 @@ Subagents and mechanical analyzers over-report. Before any observation or findin
 
 ### Phase 5 — Execute & close the loop (`--execute-level`, `--reconcile`)
 
-`--execute-level` dispatches one executor (a native subagent, or a provider-CLI run) in an isolated worktree at the chosen effort and model — on the `--branch` target (created if absent) or a generated `advisor/<plan-id>` branch — then you review its diff like a tech lead (re-run done criteria, check scope, read the code and the tests) and render APPROVE / REVISE / BLOCK. Under `--bypass-pr-create=yes`, an approved `--improve` diff is pushed and opened as a PR for human review; otherwise nothing is pushed. `--reconcile` verifies DONE plans, investigates BLOCKED ones, refreshes drifted TODOs, retires dead findings, and re-syncs the reference. This whole phase is **code mode only** — in chat mode the work stops at the written plan. Read `references/closing-the-loop.md` before the first dispatch. Merging is always the user's decision — never merge.
+`--execute-level` dispatches one executor (a native subagent, or a provider-CLI run) in an isolated worktree at the chosen effort and model — on the `--branch` target (created if absent) or a generated `advisor/<plan-id>` branch — then you review its diff like a tech lead (re-run done criteria, check scope, read the code and the tests) and render APPROVE / REVISE / BLOCK. Several dispatch-ready plans run on the **critical path** — ordered by dependencies then priority, independent ones parallelized one worktree each (`references/delegation.md` "Big queues"). Verification defaults to your review plus one independent second opinion; a **judge panel** of independent raters is convened only when you judge the severity warrants it or the user asks, its ratings advisory input to your verdict (`references/closing-the-loop.md` "The judge panel"). Under `--bypass-pr-create=yes`, an approved `--improve` diff is pushed and opened as a PR for human review — a convened panel clears first; otherwise nothing is pushed. `--reconcile` verifies DONE plans, investigates BLOCKED ones, refreshes drifted TODOs, retires dead findings, and re-syncs the reference. This whole phase is **code mode only** — in chat mode the work stops at the written plan. Read `references/closing-the-loop.md` before the first dispatch. Merging is always the user's decision — never merge.
 
 ## Model & effort assignment
 

@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "explore",
-      "version": "2.10.0",
+      "version": "2.11.0",
       "description": "Explore, understand, and improve a codebase as a read-only senior architect-advisor, driven by feature flags. Charts a durable system design reference (diagrams, ADRs, risk map); flags add audit-and-plan, single-task planning, security review, executor dispatch, agent-context init, and budget-aware resumable runs.",
       "source": "./",
       "author": {

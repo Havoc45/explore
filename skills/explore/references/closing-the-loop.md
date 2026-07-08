@@ -53,7 +53,7 @@ Executor model: what the user named if they named one (`execute 003 gpt-5.5` / `
 
 Either lane, one executor at a time per plan.
 
-**Queued plans can run in parallel — one worktree each.** When several plans are dispatch-ready, parallelize the *independent* ones: no dependency edges between them in `plans/README.md`, and pairwise-disjoint in-scope paths. Each gets its own executor in its own worktree/branch (worktree path `<plan-id>-<model>`, per the labeling rule in `delegation.md`), CLI lanes staffed first (quota preservation), total concurrency bounded by the `--depth` cap. Overlapping scope or a dependency edge → sequence those; when in doubt, sequence. Reviews are rendered serially by the advisor as each executor reports — dispatch parallelizes, judgment doesn't.
+**Queued plans run on the critical path — one worktree each.** When several plans are dispatch-ready, first order the queue: dependency edges, then priority, then leverage (`delegation.md` "Big queues run on the critical path"). Then parallelize the *independent* ones in that order: no dependency edges between them in `plans/README.md`, and pairwise-disjoint in-scope paths. Each gets its own executor in its own worktree/branch (worktree path `<plan-id>-<model>`, per the labeling rule in `delegation.md`), CLI lanes staffed first (quota preservation), total concurrency bounded by the `--depth` cap. Overlapping scope or a dependency edge → sequence those; when in doubt, sequence. Reviews are rendered serially by the advisor as each executor reports — dispatch parallelizes, judgment doesn't.
 
 The executor brief — either lane: the subagent prompt, or the CLI run's prompt — must contain:
 
@@ -129,13 +129,31 @@ For anything non-trivial — and always for high-risk diffs (security, schema, p
 
 7. **Verify runtime behaviour for UI-facing or runtime-sensitive diffs.** Done criteria and tests prove the code checks out, not that the flow *behaves*. Commission a **computer-use verification run** (the codex lane in `delegation.md`, "Computer-use verification lane"): point it at the worktree, give it the exact flow the plan changed, an artifact directory, and a report format; read its report and screenshots as evidence in the verdict. Label it `[gpt-5.5] computer-use: <flow>`.
 
+### The judge panel — escalation, not default
+
+Default verification is the review above: your own review plus, on anything non-trivial, **one** independent second opinion (the cross-provider read-only run). That covers most diffs — never panel by reflex.
+
+Convene a **judge panel** — the multi-rater form of the second-opinion review, over the output of every executor in its scope — on exactly two triggers:
+
+- **The user asks for it** in their prompt (and a prompt that specifies its own verification regime is run exactly as stated — it replaces or extends the panel).
+- **You judge the severity warrants it** — a HIGH-severity finding, a security/schema/public-API surface, a diff where you and the second opinion disagree, or a wide-blast-radius multi-plan run heading into a PR. Your call, made like the escalation ladder's: severity buys raters.
+
+When convened:
+
+- **Composition.** 2–3 independent read-only raters, each a *different* model — and where lanes allow, a different provider (default: gpt-5.5 via `codex`, glm-5.2 via `opencode`, plus a native Claude tier; fewer lanes installed → fewer judges, never fewer than two where two models exist). Dispatch shapes and labeling per `delegation.md`; label each `judge:<model>:<plan-id>`.
+- **Brief.** Each judge gets, self-contained: the plan (inlined), the diff, the executor's report, and a fixed rating format — `RATING: 1–10` on correctness / scope / quality, `VERDICT: SHIP | FIX-FIRST`, `TOP ISSUES:` with `file:line` evidence. One judge, all plans in the run — so its ratings are comparable across executors.
+- **Judgment.** Ratings are advisory input to the CEO's verdict, never the verdict (org chart: verdicts move neither down nor out). An issue flagged by a majority of judges reopens **REVISE** on that plan before any PR; a split panel is a signal to read that diff again yourself, not to average the scores.
+- **Record.** Per plan, one line in the run record / plan Status block: why the panel was convened, judges, ratings, and what it changed (reopened, or cleared).
+
+A convened panel gates the PR it was convened for, not the merge — merging remains the user's decision, always.
+
 ### Verdict
 
 **Documented deviations are judged on merit, not reflex-blocked.** "Do not improvise" exists to stop silent drift; an executor that hits a real obstacle (e.g. the plan's approach breaks existing test mocks), adapts minimally, and explains it in NOTES has done the right thing. Approve it if the adaptation serves the plan's intent and stays in scope; treat *undocumented* deviations as review failures.
 
 | Verdict | When | Action |
 |---|---|---|
-| **APPROVE** | Criteria pass, scope clean, quality holds | Update index status to DONE. Present to the user: diff summary, worktree path and branch, anything from NOTES. **Merging is always the user's decision — never merge.** By default don't push or open a PR; under `--bypass-pr-create=yes` (an `--improve` run), push the working branch and open a PR (`gh pr create`) that summarises and links the plan, for human review. |
+| **APPROVE** | Criteria pass, scope clean, quality holds | Update index status to DONE. Present to the user: diff summary, worktree path and branch, anything from NOTES. **Merging is always the user's decision — never merge.** By default don't push or open a PR; under `--bypass-pr-create=yes` (an `--improve` run), push the working branch and open a PR (`gh pr create`) that summarises and links the plan, for human review — a judge panel, if convened (see above), clears first. |
 | **REVISE** | Fixable gaps | Send specific, actionable feedback to the *same* executor ("criterion 3 fails: X; the error handling in `api.ts:90` swallows the error — use the Result pattern per the plan") — native lane: a direct agent message (SendMessage); CLI lane over MCP: `codex-reply {threadId, "<feedback>"}` / `opencode_run {session_id, directory: <worktree>, "<feedback>"}` (the live codex server retains the thread's confinement; a restarted server → shell resume); CLI lane over shell: resume **with the confinement restated** (from inside the worktree: `codex exec resume <session-id> -c sandbox_mode="workspace-write" "<feedback>"` / `opencode run -s <session-id> --dir <worktree> --auto "<feedback>"` — a bare resume re-roots at your cwd; see `delegation.md` "Dispatch transports"), and re-run the main-tree check after every round. **Max 2 revision rounds**, then BLOCK. A revision that *restates rather than advances* is a spiral (`delegation.md`) — skip the remaining round and climb the ladder: extract the blocking decision, settle it with a stronger model at low effort, then re-dispatch the executor with the answer inlined in the plan — or BLOCK with the refined plan. |
 | **BLOCK** | STOP condition hit, scope violated unrecoverably, or revisions exhausted | Mark BLOCKED in the index with the reason. Refine or rewrite the plan with what was learned. Tell the user what happened and what changed in the plan. |
 

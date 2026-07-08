@@ -4,6 +4,38 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.11.0] — 2026-07-08
+
+### Added
+- **Critical-path queue sequencing** (`delegation.md` "Big queues run on the
+  critical path"; dispatch section of `closing-the-loop.md`; `sub-continuous.md`
+  unit ordering; Phase-5 pointer in SKILL.md): big queues are ordered before
+  staffing — dependency edges first, then priority (severity/P-level), then
+  leverage — and launched in that order with maximum parallelism the order
+  allows; free slots take the next *independent* unit, never filler that blocks
+  a prerequisite's slot.
+- **Judge panel — escalation verification** (`closing-the-loop.md`; APPROVE
+  row, Phase-5 summary in SKILL.md; routing rule 7 cross-ref in
+  `delegation.md`): default verification stays CEO review + one independent
+  second opinion; a panel of 2–3 independent read-only raters (different
+  models, different providers where lanes allow) is convened only on user
+  request or when the CEO judges severity warrants it (HIGH finding,
+  security/schema/public-API surface, CEO–second-opinion disagreement,
+  wide-blast-radius multi-plan PR). Fixed format — `RATING` /
+  `VERDICT: SHIP|FIX-FIRST` / `TOP ISSUES` with `file:line`; ratings advisory
+  to the CEO's verdict, majority-flagged issues reopen REVISE, and a convened
+  panel clears before any `--bypass-pr-create=yes` PR.
+- **Sub-continuous refresh loop + hard 90% line** (`sub-continuous.md`; flag
+  row in SKILL.md): per-harness usage-command table (Claude Code / Codex
+  `/usage`; OpenCode via Opencode Go `ogc-usage`; other harnesses must be
+  named by the user); the checkpoint write must complete before 90% of the
+  quota window is consumed (hard backstop under the existing 20% reserve);
+  after a quota-caused checkpoint the session schedules **one wake** at the
+  reset time (harness scheduler; no scheduler → report reset time + resume
+  command) whose prompt is `explore --sub-continuous` — on fire it reads
+  `HEAD`, loads the head-doc, re-runs pre-flight, and continues. Context-only
+  checkpoints resume immediately instead of waiting.
+
 ## [2.10.0] — 2026-07-06
 
 ### Added
