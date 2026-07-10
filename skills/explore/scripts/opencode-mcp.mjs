@@ -32,21 +32,21 @@ const log = (...a) => console.error("[opencode-mcp]", ...a);
 
 // ---------- opencode server management ----------
 
-async function serverUp(timeoutMs = 500) {
+async function serverHealth(timeoutMs = 500) {
   try {
     const res = await fetch(`${BASE}/session/status`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
-    return res.ok;
+    return res.ok ? "healthy" : "unhealthy";
   } catch {
-    return false;
+    return "down";
   }
 }
 
 let serverStarting = null; // memoized so concurrent first calls spawn one server
 
 async function ensureServer() {
-  if (await serverUp()) return;
+  if ((await serverHealth()) === "healthy") return;
   serverStarting ??= (async () => {
     log(`starting opencode serve on ${BASE}`);
     const child = spawn(
@@ -57,7 +57,7 @@ async function ensureServer() {
     child.unref();
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 500));
-      if (await serverUp()) return;
+      if ((await serverHealth()) === "healthy") return;
     }
     throw new Error(`opencode serve did not come up on ${BASE} within 15s`);
   })();
