@@ -24,6 +24,26 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple, Optional
 from collections import defaultdict
 
+try:
+    import tomllib
+except ImportError:
+    tomllib = None
+
+
+def _rel_parts_or_none(path: Path, root: Path) -> Optional[Tuple[str, ...]]:
+    """Return path components relative to *root*, or ``None`` if the path
+    escapes the project root (including symlink escapes)."""
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return None
+    if path.is_symlink():
+        try:
+            path.resolve().relative_to(root.resolve())
+        except (ValueError, OSError):
+            return None
+    return rel.parts
+
 
 class DependencyAnalyzer:
     """Analyzes project dependencies and module coupling."""
@@ -41,6 +61,7 @@ class DependencyAnalyzer:
         self.issues: List[Dict] = []
         self.recommendations: List[str] = []
         self.package_manager: Optional[str] = None
+        self._pyproject_data: Optional[dict] = None
 
     def analyze(self) -> Dict:
         """Run full dependency analysis."""
@@ -60,7 +81,7 @@ class DependencyAnalyzer:
         elif (self.project_path / 'requirements.txt').exists():
             self.package_manager = 'pip'
         elif (self.project_path / 'pyproject.toml').exists():
-            self.package_manager = 'poetry'
+            self.package_manager = self._detect_pyproject_layout()
         elif (self.project_path / 'go.mod').exists():
             self.package_manager = 'go'
         elif (self.project_path / 'Cargo.toml').exists():
@@ -71,12 +92,41 @@ class DependencyAnalyzer:
         if self.verbose:
             print(f"Detected package manager: {self.package_manager}")
 
+    def _detect_pyproject_layout(self) -> str:
+        """Determine whether pyproject.toml uses Poetry, PEP 621, or neither."""
+        toml_path = self.project_path / 'pyproject.toml'
+        if tomllib:
+            try:
+                with open(toml_path, 'rb') as f:
+                    self._pyproject_data = tomllib.load(f)
+                data = self._pyproject_data
+                has_poetry = ('tool' in data and 'poetry' in data['tool']
+                              and 'dependencies' in data['tool']['poetry'])
+                has_pep621 = ('project' in data and 'dependencies' in data['project'])
+                if has_poetry:
+                    return 'poetry'
+                elif has_pep621:
+                    return 'pep621'
+                else:
+                    return 'pyproject_unknown'
+            except Exception:
+                return 'pyproject_unknown'
+        else:
+            content = toml_path.read_text()
+            if re.search(r'^\[tool\.poetry\.dependencies\]', content, re.MULTILINE):
+                return 'poetry'
+            elif re.search(r'^\[project\]\s*$', content, re.MULTILINE):
+                return 'pep621'
+            else:
+                return 'pyproject_unknown'
+
     def _parse_dependencies(self):
         """Parse dependencies based on detected package manager."""
         parsers = {
             'npm': self._parse_npm,
             'pip': self._parse_pip,
             'poetry': self._parse_poetry,
+            'pep621': self._parse_pep621,
             'go': self._parse_go,
             'cargo': self._parse_cargo,
         }
@@ -84,6 +134,13 @@ class DependencyAnalyzer:
         parser = parsers.get(self.package_manager)
         if parser:
             parser()
+        elif self.package_manager == 'pyproject_unknown':
+            self.issues.append({
+                'type': 'unsupported_pyproject_layout',
+                'severity': 'warning',
+                'message': 'pyproject.toml present but no recognized dependency table '
+                           '([tool.poetry.dependencies] or [project.dependencies]) found'
+            })
 
     def _parse_npm(self):
         """Parse package.json for npm dependencies."""
@@ -186,6 +243,78 @@ class DependencyAnalyzer:
                 'message': f"Failed to parse pyproject.toml: {e}"
             })
 
+    def _parse_pep621(self):
+        """Parse pyproject.toml for PEP 621 [project] table dependencies."""
+        toml_path = self.project_path / 'pyproject.toml'
+        try:
+            if self._pyproject_data is not None:
+                data = self._pyproject_data
+            elif tomllib:
+                with open(toml_path, 'rb') as f:
+                    data = tomllib.load(f)
+            else:
+                content = toml_path.read_text()
+                self._parse_pep621_regex(content)
+                if self.verbose:
+                    print(f"Found {len(self.direct_deps)} direct deps, "
+                          f"{len(self.dev_deps)} dev deps")
+                return
+
+            project = data.get('project', {})
+            for dep in project.get('dependencies', []):
+                name, version = self._parse_pep621_dep(dep)
+                self.direct_deps[name] = version
+            for group, deps in project.get('optional-dependencies', {}).items():
+                for dep in deps:
+                    name, version = self._parse_pep621_dep(dep)
+                    self.dev_deps[name] = version
+
+            if self.verbose:
+                print(f"Found {len(self.direct_deps)} direct deps, "
+                      f"{len(self.dev_deps)} dev deps")
+
+        except Exception as e:
+            self.issues.append({
+                'type': 'parse_error',
+                'severity': 'error',
+                'message': f"Failed to parse pyproject.toml: {e}"
+            })
+
+    def _parse_pep621_dep(self, dep_str: str) -> Tuple[str, str]:
+        """Parse a PEP 508 dependency string into (name, version_spec)."""
+        match = re.match(r'^([a-zA-Z0-9][a-zA-Z0-9._-]*)', dep_str)
+        if match:
+            name = match.group(1).split('[')[0]
+            rest = dep_str[match.end():].strip()
+            version = rest if rest else 'any'
+            return name, version
+        return dep_str, 'any'
+
+    def _parse_pep621_regex(self, content: str):
+        """Parse [project] dependencies using regex (fallback when tomllib unavailable)."""
+        project_match = re.search(
+            r'^\[project\]\s*\n(.*?)(?=\n\[|\Z)',
+            content, re.MULTILINE | re.DOTALL,
+        )
+        if project_match:
+            project_block = project_match.group(1)
+            deps_match = re.search(
+                r'^dependencies\s*=\s*\[(.*?)\]',
+                project_block, re.MULTILINE | re.DOTALL,
+            )
+            if deps_match:
+                for dep in re.findall(r'"([^"]+)"', deps_match.group(1)):
+                    name, version = self._parse_pep621_dep(dep)
+                    self.direct_deps[name] = version
+
+        for match in re.finditer(
+            r'^\[project\.optional-dependencies\.[^\]]+\]\s*\n(.*?)(?=\n\[|\Z)',
+            content, re.MULTILINE | re.DOTALL,
+        ):
+            for dep in re.findall(r'"([^"]+)"', match.group(1)):
+                name, version = self._parse_pep621_dep(dep)
+                self.dev_deps[name] = version
+
     def _parse_go(self):
         """Parse go.mod for Go dependencies."""
         mod_path = self.project_path / 'go.mod'
@@ -285,8 +414,8 @@ class DependencyAnalyzer:
 
         for ext in extensions:
             for file_path in self.project_path.rglob(f'*{ext}'):
-                # Skip ignored directories
-                if any(ignored in file_path.parts for ignored in ignore_dirs):
+                rel_parts = _rel_parts_or_none(file_path, self.project_path)
+                if rel_parts is None or any(ignored in rel_parts for ignored in ignore_dirs):
                     continue
 
                 # Get module name (directory relative to project root)
