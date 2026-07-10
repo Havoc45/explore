@@ -163,7 +163,7 @@ let serverStarting = null; // memoized so concurrent first calls spawn one serve
 
 async function ensureServer() {
   if ((await serverHealth()) === "healthy") return;
-  serverStarting ??= (async () => {
+  const starting = (serverStarting ??= (async () => {
     const health = await serverHealth();
     if (health === "healthy") return;
     if (health === "unhealthy") await replaceUnhealthyServer();
@@ -171,20 +171,44 @@ async function ensureServer() {
     const child = spawn(
       "opencode",
       ["serve", "--port", String(PORT), "--hostname", HOST],
-      { detached: true, stdio: "ignore" },
+      { detached: true, stdio: ["ignore", "ignore", "pipe"] },
     );
+    let childError = null;
+    let childExit = null;
+    let stderrTail = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      stderrTail = (stderrTail + chunk).slice(-2048);
+    });
+    child.on("error", (err) => {
+      childError = err;
+    });
+    child.on("exit", (code, signal) => {
+      childExit = { code, signal };
+    });
     child.unref();
-    for (let i = 0; i < 30; i++) {
-      await new Promise((r) => setTimeout(r, 500));
-      if ((await serverHealth()) === "healthy") return;
+    try {
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        if ((await serverHealth()) === "healthy") return;
+        if (childError || childExit) break;
+      }
+      const details = [];
+      if (childError) details.push(`spawn error: ${childError.message}`);
+      if (childExit) {
+        details.push(`exit: ${childExit.signal ? `signal ${childExit.signal}` : `code ${childExit.code}`}`);
+      }
+      if (stderrTail.trim()) details.push(`stderr: ${stderrTail.trim()}`);
+      const suffix = details.length ? ` (${details.join("; ")})` : "";
+      throw new Error(`opencode serve did not come up on ${BASE} within 15s${suffix}`);
+    } finally {
+      child.stderr.destroy();
     }
-    throw new Error(`opencode serve did not come up on ${BASE} within 15s`);
-  })();
+  })());
   try {
-    await serverStarting;
-  } catch (err) {
-    serverStarting = null; // allow a retry after a failed start
-    throw err;
+    await starting;
+  } finally {
+    if (serverStarting === starting) serverStarting = null;
   }
 }
 
