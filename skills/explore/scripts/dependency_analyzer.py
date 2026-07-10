@@ -291,7 +291,16 @@ class DependencyAnalyzer:
         return dep_str, 'any'
 
     def _parse_pep621_regex(self, content: str):
-        """Parse [project] dependencies using regex (fallback when tomllib unavailable)."""
+        """Parse [project] dependencies using regex (fallback when tomllib unavailable).
+
+        Handles double- and single-quoted strings, ``[project.optional-dependencies]``
+        (table form with ``key = [...]`` entries) and ``[project.optional-dependencies.<group>]``
+        sub-tables, matching the tomllib path's coverage as closely as a regex fallback allows.
+        """
+        # Match both double- and single-quoted TOML strings.
+        str_re = r'["\']([^"\']+)["\']'
+
+        # [project] table — extract the dependencies array.
         project_match = re.search(
             r'^\[project\]\s*\n(.*?)(?=\n\[|\Z)',
             content, re.MULTILINE | re.DOTALL,
@@ -299,19 +308,32 @@ class DependencyAnalyzer:
         if project_match:
             project_block = project_match.group(1)
             deps_match = re.search(
-                r'^dependencies\s*=\s*\[(.*?)\]',
+                r'^dependencies\s*=\s*\[(.*?)\][ \t]*$',
                 project_block, re.MULTILINE | re.DOTALL,
             )
             if deps_match:
-                for dep in re.findall(r'"([^"]+)"', deps_match.group(1)):
+                for dep in re.findall(str_re, deps_match.group(1)):
                     name, version = self._parse_pep621_dep(dep)
                     self.direct_deps[name] = version
 
+        # [project.optional-dependencies] table (key = array form).
+        opt_match = re.search(
+            r'^\[project\.optional-dependencies\]\s*\n(.*?)(?=\n\[|\Z)',
+            content, re.MULTILINE | re.DOTALL,
+        )
+        if opt_match:
+            opt_block = opt_match.group(1)
+            for arr_match in re.finditer(r'=\s*\[(.*?)\][ \t]*$', opt_block, re.MULTILINE | re.DOTALL):
+                for dep in re.findall(str_re, arr_match.group(1)):
+                    name, version = self._parse_pep621_dep(dep)
+                    self.dev_deps[name] = version
+
+        # [project.optional-dependencies.<group>] sub-tables.
         for match in re.finditer(
             r'^\[project\.optional-dependencies\.[^\]]+\]\s*\n(.*?)(?=\n\[|\Z)',
             content, re.MULTILINE | re.DOTALL,
         ):
-            for dep in re.findall(r'"([^"]+)"', match.group(1)):
+            for dep in re.findall(str_re, match.group(1)):
                 name, version = self._parse_pep621_dep(dep)
                 self.dev_deps[name] = version
 

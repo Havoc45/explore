@@ -73,7 +73,7 @@ function lintSequence(code) {
 
 function extract(file) {
   const txt = fs.readFileSync(file, 'utf8'), out = [],
-    re = /^[ \t]*```mermaid[^\r\n]*\r?\n([\s\S]*?)```/gm;
+    re = /^[ \t]*```mermaid(?:[ \t][^\r\n]*)?\r?\n([\s\S]*?)^[ \t]*```/gm;
   let m, i = 0;
   while ((m = re.exec(txt))) out.push({ file, idx: ++i, code: m[1].trimEnd() });
   return out;

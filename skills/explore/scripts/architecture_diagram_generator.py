@@ -18,6 +18,7 @@ import sys
 import json
 import argparse
 import re
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Set, Tuple, Optional
 from collections import defaultdict
@@ -247,7 +248,6 @@ class MermaidGenerator(DiagramGenerator):
         super().__init__(scan_result)
         self._id_map: Dict[str, str] = {}
         self._used_ids: Set[str] = set()
-        self._id_counter: int = 0
 
     def _generate_component_diagram(self) -> str:
         lines = ['graph TD']
@@ -351,20 +351,25 @@ class MermaidGenerator(DiagramGenerator):
         return '\n'.join(lines)
 
     def _safe_id(self, name: str) -> str:
-        """Convert name to a safe, collision-free Mermaid ID.
+        """Convert name to a safe, collision-free, deterministic Mermaid ID.
 
         Names that differ only in non-alphanumeric characters (e.g.
         ``foo-bar`` vs ``foo_bar``) would collide under a simple
-        ``[^a-zA-Z0-9] → _`` substitution, so a short counter suffix
-        is appended on collision.
+        ``[^a-zA-Z0-9] → _`` substitution.  A short deterministic hash
+        suffix derived from the *original* name is used so that ID
+        assignment never depends on traversal order.
         """
         if name in self._id_map:
             return self._id_map[name]
         base = re.sub(r'[^a-zA-Z0-9]', '_', name)
-        result = base
-        while result in self._used_ids:
-            self._id_counter += 1
-            result = f'{base}_{self._id_counter}'
+        if base == name and base not in self._used_ids:
+            result = base
+        else:
+            suffix = hashlib.md5(name.encode()).hexdigest()[:8]
+            result = f'{base}_{suffix}'
+            while result in self._used_ids:
+                suffix = hashlib.md5(f'{name}{suffix}'.encode()).hexdigest()[:8]
+                result = f'{base}_{suffix}'
         self._id_map[name] = result
         self._used_ids.add(result)
         return result
@@ -381,7 +386,6 @@ class PlantUMLGenerator(DiagramGenerator):
         super().__init__(scan_result)
         self._id_map: Dict[str, str] = {}
         self._used_ids: Set[str] = set()
-        self._id_counter: int = 0
 
     def _generate_component_diagram(self) -> str:
         lines = ['@startuml', 'skinparam componentStyle rectangle', '']
@@ -463,14 +467,22 @@ class PlantUMLGenerator(DiagramGenerator):
         return '\n'.join(lines)
 
     def _safe_id(self, name: str) -> str:
-        """Convert name to a safe, collision-free PlantUML ID."""
+        """Convert name to a safe, collision-free, deterministic PlantUML ID.
+
+        Uses a deterministic hash suffix derived from the original name
+        so that ID assignment never depends on traversal order.
+        """
         if name in self._id_map:
             return self._id_map[name]
         base = re.sub(r'[^a-zA-Z0-9]', '_', name)
-        result = base
-        while result in self._used_ids:
-            self._id_counter += 1
-            result = f'{base}_{self._id_counter}'
+        if base == name and base not in self._used_ids:
+            result = base
+        else:
+            suffix = hashlib.md5(name.encode()).hexdigest()[:8]
+            result = f'{base}_{suffix}'
+            while result in self._used_ids:
+                suffix = hashlib.md5(f'{name}{suffix}'.encode()).hexdigest()[:8]
+                result = f'{base}_{suffix}'
         self._id_map[name] = result
         self._used_ids.add(result)
         return result

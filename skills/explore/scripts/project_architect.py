@@ -132,7 +132,7 @@ class PatternDetector:
             # Scan files in directory
             try:
                 for f in item.rglob('*'):
-                    if f.is_file():
+                    if f.is_file() and _rel_parts_or_none(f, self.project_path) is not None:
                         self.files[item.name.lower()].append(f.name.lower())
             except (PermissionError, OSError):
                 pass
