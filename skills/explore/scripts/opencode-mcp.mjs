@@ -225,27 +225,31 @@ async function api(method, path, { directory, body, timeoutMs } = {}) {
   const url = new URL(BASE + path);
   if (directory) url.searchParams.set("directory", directory);
   const requestTimeoutMs = timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
-  let res;
   try {
-    res = await fetch(url, {
+    const res = await fetch(url, {
       method,
       headers: body ? { "content-type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(requestTimeoutMs),
     });
+    if (!res.ok) {
+      let text = "";
+      try {
+        text = await res.text();
+      } catch (err) {
+        if (err?.name === "TimeoutError" || err?.name === "AbortError") throw err;
+      }
+      throw new Error(`${method} ${path} -> HTTP ${res.status} ${text.slice(0, 300)}`);
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    return ct.includes("json") ? await res.json() : await res.text();
   } catch (err) {
     if (err?.name === "TimeoutError" || err?.name === "AbortError") {
       throw new Error(`${method} ${path} timed out after ${requestTimeoutMs}ms`, { cause: err });
     }
     throw err;
   }
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${method} ${path} -> HTTP ${res.status} ${text.slice(0, 300)}`);
-  }
-  if (res.status === 204) return null;
-  const ct = res.headers.get("content-type") || "";
-  return ct.includes("json") ? res.json() : res.text();
 }
 
 // ---------- session helpers ----------
