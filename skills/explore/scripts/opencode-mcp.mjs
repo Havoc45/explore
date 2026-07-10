@@ -12,6 +12,7 @@
  * Env:
  *   OPENCODE_PORT      port for `opencode serve` (default 4096)
  *   OPENCODE_HOST      hostname (default 127.0.0.1)
+ *   OPENCODE_API_TIMEOUT_MS  cap on API calls (default 30000 = 30s)
  *   OPENCODE_RUN_TIMEOUT_MS  cap on blocking runs (default 1200000 = 20 min)
  *
  * The wrapper auto-starts `opencode serve` if nothing answers on the port,
@@ -27,6 +28,7 @@ const PORT = Number(process.env.OPENCODE_PORT || 4096);
 const HOST = process.env.OPENCODE_HOST || "127.0.0.1";
 const BASE = `http://${HOST}:${PORT}`;
 const RUN_TIMEOUT_MS = Number(process.env.OPENCODE_RUN_TIMEOUT_MS || 1_200_000);
+const DEFAULT_API_TIMEOUT_MS = Number(process.env.OPENCODE_API_TIMEOUT_MS || 30_000);
 
 const log = (...a) => console.error("[opencode-mcp]", ...a);
 
@@ -215,12 +217,21 @@ async function ensureServer() {
 async function api(method, path, { directory, body, timeoutMs } = {}) {
   const url = new URL(BASE + path);
   if (directory) url.searchParams.set("directory", directory);
-  const res = await fetch(url, {
-    method,
-    headers: body ? { "content-type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
-  });
+  const requestTimeoutMs = timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: body ? { "content-type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(requestTimeoutMs),
+    });
+  } catch (err) {
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+      throw new Error(`${method} ${path} timed out after ${requestTimeoutMs}ms`, { cause: err });
+    }
+    throw err;
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`${method} ${path} -> HTTP ${res.status} ${text.slice(0, 300)}`);
