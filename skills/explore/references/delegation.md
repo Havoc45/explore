@@ -200,7 +200,28 @@ The same values ride both transports: codex takes `-c model_reasoning_effort=<v>
 - **One shell run = one unit.** A shell run emits no mid-run heartbeat; its single terminal return *is* the heartbeat. Keep those briefs one well-specified unit small, and apply spiral detection *across runs* — a resumed run that restates its previous return rather than advancing is a spiral signal. The MCP transport loosens this: `opencode_status` polls are real heartbeats (and codex streams progress events where the harness surfaces them), so longer units are steerable there — the steering protocol below applies to them unchanged.
 - **Briefs carry identical obligations:** self-contained (Hard Rule 3), Hard Rules 4 and 6 verbatim, the raise-hand rule verbatim, the report format when executing — and they compress under `--caveman` exactly like native subagent prompts (auto-clarity holds).
 - **Returns are vetted like any worker's** — Phase-3 confirmation against the code before anything is recorded. A different provider does not change the trust model: a return is a claim, not a fact, and Rule 6 applies to what the runner read *and* to what it sent back.
-- **Preflight before staffing a lane:** the CLI exists, is authenticated, and the model answers (a one-line ping if in doubt); pick the transport while you're there (MCP tools visible → MCP; else shell). A lane failing mid-run is a **reassign** steer — move the unit to the next lane and record it; never route around a failed lane by silently spending the session model.
+- **Preflight before staffing a lane:** run the mandatory probe below and pick the transport while you're there (MCP tools visible → MCP; else shell). A lane failing mid-run is a **reassign** steer — move the unit to the next lane and record it; never route around a failed lane by silently spending the session model.
+
+**Preflight probe — mandatory, once per run**
+
+**When.** At Phase-1 recon, before the first dispatch of any run that will staff a CLI lane. Re-probe a lane only when it later fails, then apply the reassign rule above.
+
+**Probe ladder.** Run cheapest first and stop at the first failure for each lane:
+
+1. **Presence:** `command -v codex opencode`.
+2. **Model availability:** for codex, `codex exec -s read-only -c model_reasoning_effort=low "Reply with exactly: OK" </dev/null` (auth + model, ~2k tokens); for opencode, `opencode models | grep -F "<model-id>"` (model listed, free, no API call).
+3. **Transport health:** check only the transport the run will use. For MCP, make one minimal MCP call per lane (a codex tool call or `opencode_run`); a shell lane needs no extra check beyond the model ping.
+
+**Stale-transport failure shapes and refresh**
+
+| Transport | Stale symptoms | Refresh |
+|---|---|---|
+| `codex mcp-server` | API 400 `"The '<model>' model requires a newer version of Codex"` via MCP while `codex exec` in a fresh shell works. | Reconnect/restart the registered `codex` MCP server (on Claude Code: `/mcp` → reconnect). Reconnect loses the per-process thread registry → continue old threads with `codex exec resume <threadId>`. |
+| `opencode serve` | Any one: wrapper error `opencode serve did not come up on http://127.0.0.1:4096 within 15s` while `lsof -nP -i :4096` shows a listener; or `curl -s -m 5 http://127.0.0.1:4096/session/status` returning `{"name":"UnknownError",...}`; or serve process start date predating the installed binary's upgrade. | `kill <serve-PID>` — verify the PID's command is `opencode serve` first. The wrapper auto-respawns a fresh serve on the next call. Sessions are not lost (opencode persists sessions on disk). |
+
+**Outcome recording.** The run record states, per lane, the probed-at result: `ok`, `absent`, `refreshed`, or `failed→reassigned`.
+
+**Cost.** The full ladder costs at most one ~2k-token codex ping and pennies of opencode time; a stalled dispatch costs 15s–10min each. Never skip the probe to save the ping.
 
 ## Spiral detection
 
