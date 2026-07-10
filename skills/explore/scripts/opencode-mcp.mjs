@@ -43,11 +43,130 @@ async function serverHealth(timeoutMs = 500) {
   }
 }
 
+function commandOutput(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("exit", (code, signal) => resolve({ code, signal, stdout, stderr }));
+  });
+}
+
+async function listenerCommand() {
+  const found = await commandOutput("lsof", ["-ti", ":" + PORT]);
+  if (found.code !== 0 && found.code !== 1) {
+    throw new Error(`lsof failed while checking port ${PORT}: ${found.stderr.trim()}`);
+  }
+  const candidatePids = [...new Set(found.stdout.split(/\s+/).filter(Boolean).map(Number))]
+    .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
+  const pids = [];
+  for (const pid of candidatePids) {
+    const listening = await commandOutput("lsof", [
+      "-nP",
+      "-a",
+      "-p",
+      String(pid),
+      `-iTCP:${PORT}`,
+      "-sTCP:LISTEN",
+      "-t",
+    ]);
+    if (listening.code === 0) pids.push(pid);
+    else if (listening.code !== 1) {
+      throw new Error(`lsof failed while checking listener pid ${pid}: ${listening.stderr.trim()}`);
+    }
+  }
+  if (pids.length === 0) {
+    if ((await serverHealth()) === "down") return null;
+    throw new Error(`could not identify the process listening on port ${PORT}`);
+  }
+
+  const processes = [];
+  for (const pid of pids) {
+    const inspected = await commandOutput("ps", ["-o", "command=", "-p", String(pid)]);
+    processes.push({ pid, command: inspected.stdout.trim() || "<unknown>" });
+  }
+  if (processes.length !== 1) {
+    const details = processes.map(({ pid, command }) => `${pid} (${command})`).join(", ");
+    throw new Error(`could not safely identify one listener on port ${PORT}: ${details}`);
+  }
+  return processes[0];
+}
+
+function isExpectedServeCommand(command) {
+  const portPattern = new RegExp(`(?:^|\\s)--port(?:\\s+|=)${PORT}(?:\\s|$)`);
+  return command.includes("opencode serve") && portPattern.test(command);
+}
+
+function processExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    if (err?.code === "ESRCH") return false;
+    if (err?.code === "EPERM") return true;
+    throw err;
+  }
+}
+
+async function waitForProcessExit(pid, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!processExists(pid)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return !processExists(pid);
+}
+
+async function waitForPortFree(timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if ((await serverHealth()) === "down") return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`port ${PORT} did not become free within ${timeoutMs}ms`);
+}
+
+async function replaceUnhealthyServer() {
+  const listener = await listenerCommand();
+  if (!listener) return;
+  const { pid, command } = listener;
+  if (!isExpectedServeCommand(command)) {
+    throw new Error(
+      `port ${PORT} listener pid ${pid} is not opencode serve --port ${PORT}: ${command}`,
+    );
+  }
+
+  log(`stale opencode serve pid ${pid} (unhealthy /session/status) — replacing`);
+  process.kill(pid, "SIGTERM");
+  if (!(await waitForProcessExit(pid, 2000))) {
+    const inspected = await commandOutput("ps", ["-o", "command=", "-p", String(pid)]);
+    const currentCommand = inspected.stdout.trim();
+    if (!isExpectedServeCommand(currentCommand)) {
+      throw new Error(`refusing to SIGKILL pid ${pid}; command changed to: ${currentCommand}`);
+    }
+    log(`stale opencode serve pid ${pid} ignored SIGTERM — sending SIGKILL`);
+    process.kill(pid, "SIGKILL");
+  }
+  await waitForPortFree();
+}
+
 let serverStarting = null; // memoized so concurrent first calls spawn one server
 
 async function ensureServer() {
   if ((await serverHealth()) === "healthy") return;
   serverStarting ??= (async () => {
+    const health = await serverHealth();
+    if (health === "healthy") return;
+    if (health === "unhealthy") await replaceUnhealthyServer();
     log(`starting opencode serve on ${BASE}`);
     const child = spawn(
       "opencode",
