@@ -80,7 +80,7 @@ Capability economics says *which rung*; the roster says *which model* — and th
 - **Worktrees & branches**: encode plan and model in the path — worktree `../<repo>-wt/<plan-id>-gpt-5.6-sol/`, generated branches stay `advisor/<plan-id>` (the worktree path carries the model; a branch name outlives the run and shouldn't).
 - **Run record / heartbeat log**: every dispatch line states model + effort + lane (`gpt-5.6-sol @ high via codex-MCP`), so the record is reproducible and a stuck run is attributable without archaeology.
 
-**Dispatch transports** — each provider lane is reachable two ways; prefer MCP where registered, shell everywhere else (all shapes below live-verified, codex 0.142.5 / opencode 1.17.13):
+**Dispatch transports** — each provider lane is reachable two ways; prefer MCP where registered, shell everywhere else (all shapes below live-verified, codex 0.144.1 / opencode 1.17.18; first verified on 0.142.5 / 1.17.13):
 
 | Transport | codex | opencode | Use when |
 |---|---|---|---|
@@ -142,10 +142,10 @@ opencode run -s <session-id> --dir <repo-root> "<narrowed brief>"
 
 Session ids: the MCP transport returns them structured (`threadId` / `session_id` in the tool result); the shell transport emits them in the JSONL events (`thread.started` carries `thread_id`). `codex exec resume --last` and `opencode run -c` (continue-last) are fallbacks **only when a single dispatch is in flight**. The main-tree check runs after *every* CLI round that can write — not just the first.
 
-**Codex lane quirks** — verified on codex-cli 0.142.5; know these before dispatching:
+**Codex lane quirks** — verified on codex-cli 0.144.1; know these before dispatching:
 
 - **Timeout.** A codex run routinely outlives a harness shell tool's cap (Claude Code Bash: 10 min default). Either pass an explicit generous timeout, or — better for anything non-trivial — run it in the background and poll for the `-o <report-file>` to appear; the report file, not the process exit, is the completion signal.
-- **Stdin hang.** `codex exec` reads stdin whenever it isn't a TTY (`Reading additional input from stdin...`) — a background or harness shell leaves the pipe open and the run blocks forever *before doing anything*. Always close it: `codex exec … "<prompt>" </dev/null`. (Hit live on 0.142.5.)
+- **Stdin hang.** `codex exec` reads stdin whenever it isn't a TTY (`Reading additional input from stdin...`) — a background or harness shell leaves the pipe open and the run blocks forever *before doing anything*. Always close it: `codex exec … "<prompt>" </dev/null`. (Hit live on 0.142.5; still present on 0.144.1.)
 - **`-o <file>`** writes only the *final* agent message — capture stdout separately (`--json` JSONL events) if you need the trail.
 - **`--output-schema <file>`** (JSON Schema) forces a structured final response — use it when the orchestrator must parse the result instead of reading prose.
 - **`--add-dir <dir>`** grants an extra writable directory alongside the sandbox root — how a read-confined or repo-confined run gets a scratch/artifact directory.
@@ -179,7 +179,7 @@ Sandbox selection: `-s danger-full-access` **only** for genuine GUI automation, 
 
 **Minion platforms — tier-3 nesting.** Both lanes can spawn their *own* native subagents, so one lane dispatch can be a **manager with minions** instead of a single worker:
 
-- **codex**: `multi_agent` (stable and default-on at 0.142.5) — collab tools `spawn_agent` / `wait` / `close_agent`, child threads at depth 1 by default. Codex spawns **only when the brief explicitly asks** ("spawn one worker per X, wait for all, merge").
+- **codex**: `multi_agent` (stable and default-on since 0.142.5) — collab tools `spawn_agent` / `wait` / `close_agent`, child threads at depth 1 by default. Codex spawns **only when the brief explicitly asks** ("spawn one worker per X, wait for all, merge").
 - **opencode**: task-tool subagents (built-ins `explore` / `general`, or named agents from the host's config); child sessions are inspectable at `GET /session/{id}/children`. A subagent's model is fixed by its agent config, not chooseable per call — pre-declare one agent per role×tier where that matters.
 
 Two rules keep nesting inside the org chart. **The `--depth` caps bound total concurrent agents *including* platform-spawned minions** — the platform's spawns don't report to the harness, so a fan-out brief must carry its own cap ("at most N minions"). And **a platform that fans out is a manager**: its brief carries the end goal and direction, it vets its minions' returns before reporting one merged result up, and Phase-3 vetting of that merged result still happens on your side.

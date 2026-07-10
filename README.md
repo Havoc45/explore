@@ -2,7 +2,7 @@
 
 A Claude Code plugin (and Agent Skill) that explores, understands, and **improves** a codebase as a senior architect-advisor — strictly **read-only** on source, evidence-driven, and driven by **feature flags**.
 
-By default it charts how a system is actually built into a durable system design reference. Flags extend it across the whole advisor lifecycle — audit and plan, plan a single task, security review, dispatch an executor and review its work, refresh against HEAD — and tune any run with depth, verbosity, token-compressed subagent communication, and per-plan model assignment. It never touches your source; every write lands in a path it owns — `docs/system-design-reference/`, `plans/`, or (with `--init`) the root agent-context files.
+By default it charts how a system is actually built into a durable system design reference. Flags extend it across the whole advisor lifecycle — audit and plan, plan a single task, security review, dispatch an executor and review its work, refresh against HEAD — and tune any run with depth, verbosity, token-compressed subagent communication, and per-plan model assignment. It never touches your source; every write lands in a path it owns — `docs/system-design-reference/`, `plans/`, or (with `--init`) the root agent-context files — or, on a [Knoxville](https://github.com/Havoc45/Knoxville)-linked repo, the linked docs vault; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration).
 
 ```
 explore                          → docs/system-design-reference/   (map: diagrams, ADRs, risk map)
@@ -34,7 +34,7 @@ All four are MIT-licensed; full attribution is in [`NOTICE`](./NOTICE). If you f
 | `--review=<plan-file>` | Critique and tighten an existing plan |
 | `--execute-level=<auto\|low\|medium\|high\|max> <plan[:model]>` | Dispatch an executor (native subagent or provider-CLI run) on a plan at the chosen effort (`auto` = the orchestrator sets it per plan), review its diff, render a verdict |
 | `--reconcile` | Refresh the reference and verify/relink plans against `HEAD` |
-| `--init` | Write a lean, curated `AGENTS.md` agent-context primer at the repo root + symlink `CLAUDE.md` to it (so any tool's next session knows the commands, landmines, and where the map is) |
+| `--init` | Write a lean, curated `AGENTS.md` agent-context primer at the repo root + symlink `CLAUDE.md` to it (so any tool's next session knows the commands, landmines, and where the map is), or route it to the linked docs vault in a Knoxville-linked repo; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration) |
 | `--plan-list` / `--ls` | Print a compact status table of all plans (number, description, severity, priority, status) — cached-first, reads only the plan index, never full bodies |
 
 **Modifier flags** (how the run behaves — combine freely):
@@ -67,6 +67,7 @@ Explore the repo in budget-aware resumable mode with subagents talking in cavema
 - **`plans/`** — handoff plans written for the weakest plausible executor: inlined context, ordered steps with verification gates, hard scope boundaries, machine-checkable done criteria, STOP conditions. Each cites the ADR it descends from. A compressed **`plans/agents/README.md`** digest mirrors the backlog for orchestrator triage (the full plans stay authoritative).
 - **`docs/explore-head-docs/`** — only in `--sub-continuous`: the continuation checkpoints (no `agents/` mirror — already agent-native).
 - **`AGENTS.md` + `CLAUDE.md`** (repo root) — only in `--init`: a lean, model-agnostic agent-context primer (`AGENTS.md`, the cross-tool standard) with `CLAUDE.md` symlinked to it for Claude Code. Curated and short by design — it points agents at the `agents/` mirrors above, not a copy of the map. With `--caveman`, written compressed (it loads every session).
+- **Linked Knoxville docs vault** — on a Knoxville-linked repo, all outputs above are routed to the linked docs vault; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration).
 
 ## Install
 
@@ -152,7 +153,7 @@ The vendored `opencode-mcp.mjs` wrapper (zero-dep Node) auto-starts `opencode se
 
 ## Hard rules
 
-- Never modifies source code. Writes only to the paths it owns: `docs/system-design-reference/`, `plans/` at the repo root, `docs/explore-head-docs/` (`--sub-continuous`), and the root `AGENTS.md` + `CLAUDE.md` (`--init`).
+- Never modifies source code. Writes only to the paths it owns: `docs/system-design-reference/`, `plans/` at the repo root, `docs/explore-head-docs/` (`--sub-continuous`), and the root `AGENTS.md` + `CLAUDE.md` (`--init`), or their routed destinations in the linked docs vault for a Knoxville-linked repo; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration).
 - Never runs commands that mutate the working tree — read-only analysis only (scoped exceptions: the executor's disposable worktree, and `--issues`).
 - Scope the architecture/stack and pull all available truth before judging (Rule 7).
 - Every claim and finding carries `file:line` evidence; recommendations are labelled options, never edits.
