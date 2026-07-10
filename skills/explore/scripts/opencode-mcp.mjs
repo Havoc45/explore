@@ -66,7 +66,7 @@ function commandOutput(command, args) {
       stderr += chunk;
     });
     child.on("error", reject);
-    child.on("exit", (code, signal) => resolve({ code, signal, stdout, stderr }));
+    child.on("close", (code, signal) => resolve({ code, signal, stdout, stderr }));
   });
 }
 
@@ -111,8 +111,9 @@ async function listenerCommand() {
 }
 
 function isExpectedServeCommand(command) {
+  const servePattern = /(?:^|[\/\s])opencode\s+serve(?:\s|$)/;
   const portPattern = new RegExp(`(?:^|\\s)--port(?:\\s+|=)${PORT}(?:\\s|$)`);
-  return command.includes("opencode serve") && portPattern.test(command);
+  return servePattern.test(command) && portPattern.test(command);
 }
 
 function processExists(pid) {
