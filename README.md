@@ -44,7 +44,7 @@ All four are MIT-licensed; full attribution is in [`NOTICE`](./NOTICE). If you f
 | `--depth=<standard\|quick\|deep>` | `standard` | Exploration / audit breadth |
 | `--verbosity=<low\|medium\|high>` | `high` | Wording of generated ADRs/plans (terse → descriptive); evidence always kept in full |
 | `--caveman[=<lite\|full\|ultra\|wenyan-…>]` | `full` | Compress **subagent↔orchestrator** traffic to save context/tokens; human output stays at `--verbosity` |
-| `--model=<model\|plan:model,…>` | auto | Assign model(s) to subagents/executors — native or provider-CLI models (e.g. gpt-5.5 via `codex`, glm-5.2 via `opencode`); default = orchestrator picks best-fit per plan from the delegation roster |
+| `--model=<model\|plan:model,…>` | auto | Assign model(s) to subagents/executors — native or provider-CLI models (e.g. gpt-5.6-sol via `codex`, glm-5.2 via `opencode`); default = orchestrator picks best-fit per plan from the delegation roster |
 | `--focus=<area>` | — | Scope exploration to one subsystem; a plan-file argument routes to `--review` |
 | `--sub-continuous[=<handle>\|new]` | — | Budget-aware, resumable, multi-session exploration — paces subagents against the live quota and never spills into paid credits without explicit consent |
 | `--reference=<path>[,…]` | — | Ingest the maintainer's own docs/notes/specs as ground truth during recon (repeatable) |

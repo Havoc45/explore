@@ -62,18 +62,39 @@ Keep it short — every line competes for the model's instruction budget on **ev
 
 ## Knoxville handoff — docs-vault integration
 
-[Knoxville](https://github.com/Havoc45/Knoxville) is a docs-vault tool (Node CLI + MCP server, *not* a Claude Code plugin) that keeps repos documentation-free: real `CLAUDE.md`/`AGENTS.md`/docs live in a central vault (default `~/Documents/Vaults/Projects/<project>/`), and the repo carries only a **gitignored stub** `CLAUDE.md` whose first line is `<!-- knoxville-stub -->`, an `AGENTS.md` symlink pointing *at* it (the inverse of this skill's default direction), and a `.knoxville.json` link marker. **`--init` — and any first run of this skill in a repo — checks for Knoxville before writing agent-context files**, because writing the standard primer over a Knoxville stub breaks the vault link.
+[Knoxville](https://github.com/Havoc45/Knoxville) is a docs-vault tool (Node CLI + MCP server, *not* a Claude Code plugin) that keeps repos documentation-free: real docs live in a central vault, and the repo carries only a **gitignored stub** `CLAUDE.md` whose first line is `<!-- knoxville-stub -->`, an `AGENTS.md` symlink pointing *at* it (the inverse of this skill's default direction), and a `.knoxville.json` link marker. The vault root comes from `~/.config/knoxville/config.json`'s `vaultRoot` (`$KNOXVILLE_CONFIG` relocates the file) — **read the config; never assume the default path** (`~/Documents/Vaults/Projects`). Each vault project is a fixed skeleton — `adr/ plans/ docs/ agents/ archive/` plus a `_index.md` dashboard and a `.knoxville-link.json` marker back to the repo — with doc types `adr | plan | doc | agent`.
+
+**Every run of this skill checks for Knoxville during recon — not just `--init`** — because a linked vault changes where *all* documentation lands (routing below), and writing repo-root context files over a Knoxville stub breaks the vault link.
 
 **Detect, cheapest first:**
 
 1. Repo already linked — `.knoxville.json` at the repo root, or `CLAUDE.md` starting `<!-- knoxville-stub -->`.
-2. MCP server `knoxville` registered — the `docs_*` tools are visible (`docs_init`, `docs_context`, `docs_create`, …).
+2. MCP server `knoxville` registered — the `docs_*` tools are visible (`docs_init`, `docs_context`, `docs_list`, `docs_create`, `docs_update`, `docs_search`, `docs_materialize`, `docs_restore`, …).
 3. `command -v knoxville` (binary exists after `npm link` or a published install).
-4. Config/vault: `~/.config/knoxville/config.json` (or `$KNOXVILLE_CONFIG`), vault dir `~/Documents/Vaults/Projects`.
+4. Config: `~/.config/knoxville/config.json` (or `$KNOXVILLE_CONFIG`) exists — its `vaultRoot` names the vault.
+
+### Routing — where every output lands in a linked repo
+
+The repo stays documentation-free: each action's output goes **into the vault, file for file** — one vault doc (`docs_create` / `docs_update` over MCP) per file the action would have written to the repo. The reference set stays a *set*: collapsing index + `overview` + `architecture` + `data-model` + `concerns` into one vault doc, or writing the primer but skipping the decisions, is exactly the drop this table exists to prevent.
+
+| Skill output (repo default) | Vault folder | `type` |
+|---|---|---|
+| `docs/system-design-reference/` — every file: the index, `overview`, `architecture`, `data-model`, `concerns`, any expanded splits | `docs/` | `doc` |
+| the ADRs (`decisions/ADR-NNN-*.md` + ADR index) | `adr/` | `adr` |
+| `plans/NNN-*.md` + the plan index | `plans/` | `plan` |
+| `agents/` mirrors (reference mirror, backlog digest) and the `--init` primer | `agents/` | `agent` |
+| `docs/explore-head-docs/` (`--sub-continuous` state) | stays in the repo — run state, not documentation | — |
+
+**Done = parity + committed.** At the end of every vault-writing phase:
+
+1. **Parity.** Enumerate the phase's planned output files, `docs_list` the project, and tick each file off against a vault doc — every reference file, every ADR, every plan, every mirror accounted for. A planned file with no vault doc means the phase is still open; write it before reporting done.
+2. **Committed.** A vault write persists only once synced to the vault's git repo. MCP CRUD auto-commits only when the user's config has `sync.auto: true`, and there is **no `docs_sync` MCP tool** — so end the run with `knoxville sync` (or `node <clone>/dist/cli.js sync`) and confirm it reports `committed` / `no changes`. A conflict or no-upstream failure goes to the user verbatim; never force past it.
+
+(`docs_materialize` is the reverse direction — preview/write vault docs back *into* the repo working tree, dry-run unless `apply: true`; useful when an executor needs a plan on disk. `docs_restore` un-archives. Neither replaces the routing above.)
 
 **Then branch:**
 
-- **Repo linked** → do **not** write `AGENTS.md`/`CLAUDE.md` at the root (the stub and symlink are Knoxville's, direction inverted and gitignored). The primer content goes **into the vault** instead: `docs_create`/`docs_update` under the project's `agents/` folder over MCP, and the deeper-context pointers reference the vault docs (`docs_context` is the session entry point). The rest of `--init` recon (real commands, conventions, landmines) is unchanged — only the destination moves.
+- **Repo linked** → do **not** write `AGENTS.md`/`CLAUDE.md` at the root (the stub and symlink are Knoxville's, direction inverted and gitignored). All outputs follow the routing table above; the primer's deeper-context pointers reference the vault docs (`docs_context` is the session entry point). The rest of the recon (real commands, conventions, landmines) is unchanged — only the destination moves.
 - **Knoxville available, repo not linked** → invoke its init **on the user's behalf**: call the `docs_init` MCP tool (the programmatic equivalent of `knoxville init`; if it returns a `needs_decision` payload — vault bootstrap choice, name collision, second-link guard — relay the options to the user and re-call with their answer: `bootstrap` / `mismatchAction` / `existingFolder` / `confirmSecondLink`). No MCP registered but binary on PATH → `knoxville init` is interactive (prompt-driven), so ask the user to run it themselves, then continue. After linking, write the primer into the vault as above.
 - **Not installed** → recommend it once and offer to set it up on the user's behalf (as of 2026-07 the npm package is unpublished — `npx knoxville` does not work yet):
 

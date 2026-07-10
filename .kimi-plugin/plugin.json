@@ -1,6 +1,6 @@
 {
   "name": "explore",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "description": "Read-only senior architect-advisor: charts a codebase into a durable system design reference (diagrams, ADRs, risk map); feature flags add audit-and-plan, security review, executor dispatch, and budget-aware resumable runs.",
   "author": {
     "name": "Havoc45"

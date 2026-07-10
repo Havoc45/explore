@@ -12,7 +12,7 @@
 > mechanical, well-specified → `low`/`medium`; cross-cutting, security, ambiguous
 > → `high`/`max`), and the model comes from `<plan:model>` or `--model` (default:
 > the orchestrator auto-selects the best-fit model per plan from the delegation
-> roster — native harness models, or provider-CLI models such as gpt-5.5 via
+> roster — native harness models, or provider-CLI models such as gpt-5.6-sol via
 > `codex` / glm-5.2 via `opencode` where those CLIs are installed; see
 > `delegation.md` "The model roster & routing"). Dispatch and review follow
 > the org chart in `delegation.md`.
@@ -46,10 +46,10 @@ The founding rule survives unchanged: **the advisor never edits source code.** I
 
 ### Dispatch
 
-Executor model: what the user named if they named one (`execute 003 gpt-5.5` / `<plan:model>` / `--model`); otherwise the orchestrator's best-fit pick per the org chart and roster (see SKILL.md "Model & effort assignment" and `delegation.md` "The model roster & routing") — state the model **and** effort. Then dispatch by lane:
+Executor model: what the user named if they named one (`execute 003 gpt-5.6-sol` / `<plan:model>` / `--model`); otherwise the orchestrator's best-fit pick per the org chart and roster (see SKILL.md "Model & effort assignment" and `delegation.md` "The model roster & routing") — state the model **and** effort. Then dispatch by lane:
 
 - **Native lane** — spawn **one** `general-purpose` subagent with `isolation: "worktree"`.
-- **Provider-CLI lane** (e.g. gpt-5.5 via `codex`, glm-5.2 via `opencode`) — create the worktree yourself (existing branch: `git worktree add <path> <branch>`; new or generated branch: `git worktree add -b <branch> <path> HEAD` — sanctioned under Hard Rule 2's executor-worktree exception), then run the lane **confined to that worktree**, over its MCP transport where registered (`codex {prompt, sandbox: "workspace-write", cwd: <worktree>, …}`; `opencode_run {prompt, directory: <worktree>, …}` only where the host's opencode config grants writes — a write-gated config stalls on permission asks, making shell `opencode run --auto` that lane's executor default) or as a shell run — exact shapes, sandbox scopes, and the `--execute-level`→effort mapping are in `delegation.md` ("Dispatch transports"). Capture the report (MCP: the tool result; shell: `codex exec … -o <file>` written into the worktree or scratch — never the main tree; opencode stdout) and the session id (MCP: `threadId` / `session_id` in the result; shell: the `--json` / `--format json` events) for the REVISE loop.
+- **Provider-CLI lane** (e.g. gpt-5.6-sol via `codex`, glm-5.2 via `opencode`) — create the worktree yourself (existing branch: `git worktree add <path> <branch>`; new or generated branch: `git worktree add -b <branch> <path> HEAD` — sanctioned under Hard Rule 2's executor-worktree exception), then run the lane **confined to that worktree**, over its MCP transport where registered (`codex {prompt, sandbox: "workspace-write", cwd: <worktree>, …}`; `opencode_run {prompt, directory: <worktree>, …}` only where the host's opencode config grants writes — a write-gated config stalls on permission asks, making shell `opencode run --auto` that lane's executor default) or as a shell run — exact shapes, sandbox scopes, and the `--execute-level`→effort mapping are in `delegation.md` ("Dispatch transports"). Capture the report (MCP: the tool result; shell: `codex exec … -o <file>` written into the worktree or scratch — never the main tree; opencode stdout) and the session id (MCP: `threadId` / `session_id` in the result; shell: the `--json` / `--format json` events) for the REVISE loop.
 
 Either lane, one executor at a time per plan.
 
@@ -125,9 +125,9 @@ Review like a tech lead reviewing a PR against the spec — never fix anything y
 5. **Check no existing behaviour was weakened to shrink the diff** (execution principle 2): a deleted validation branch, a dropped UI/error state, a loosened type, a removed guard. If the diff achieves "less code" by quietly removing behaviour the task didn't ask to remove, that's a REVISE/BLOCK regardless of whether the done criteria pass.
 6. **Read the accounting** (NOT DONE / ASSUMPTIONS / SMELLS). Confirm the assumptions are acceptable (and escalate any 1(a) assumption on a costly-to-reverse decision to the user), and carry forward unaddressed SMELLS as candidate findings for the next `--improve`/`--reconcile` rather than letting them vanish.
 
-For anything non-trivial — and always for high-risk diffs (security, schema, public API) — commission an independent **second-opinion review from a different provider**: a read-only CLI run over the worktree (default gpt-5.5, near-free at its quota: `codex exec -s read-only -C <worktree> "<review brief: the plan + what to judge>"`). Its findings are advisory input to your verdict; the verdict stays yours (org chart: verdicts never move down — or out).
+For anything non-trivial — and always for high-risk diffs (security, schema, public API) — commission an independent **second-opinion review from a different provider**: a read-only CLI run over the worktree (default gpt-5.6-sol, near-free at its quota: `codex exec -s read-only -C <worktree> "<review brief: the plan + what to judge>"`). Its findings are advisory input to your verdict; the verdict stays yours (org chart: verdicts never move down — or out).
 
-7. **Verify runtime behaviour for UI-facing or runtime-sensitive diffs.** Done criteria and tests prove the code checks out, not that the flow *behaves*. Commission a **computer-use verification run** (the codex lane in `delegation.md`, "Computer-use verification lane"): point it at the worktree, give it the exact flow the plan changed, an artifact directory, and a report format; read its report and screenshots as evidence in the verdict. Label it `[gpt-5.5] computer-use: <flow>`.
+7. **Verify runtime behaviour for UI-facing or runtime-sensitive diffs.** Done criteria and tests prove the code checks out, not that the flow *behaves*. Commission a **computer-use verification run** (the codex lane in `delegation.md`, "Computer-use verification lane"): point it at the worktree, give it the exact flow the plan changed, an artifact directory, and a report format; read its report and screenshots as evidence in the verdict. Label it `[gpt-5.6-sol] computer-use: <flow>`.
 
 ### The judge panel — escalation, not default
 
@@ -140,7 +140,7 @@ Convene a **judge panel** — the multi-rater form of the second-opinion review,
 
 When convened:
 
-- **Composition.** 2–3 independent read-only raters, each a *different* model — and where lanes allow, a different provider (default: gpt-5.5 via `codex`, glm-5.2 via `opencode`, plus a native Claude tier; fewer lanes installed → fewer judges, never fewer than two where two models exist). Dispatch shapes and labeling per `delegation.md`; label each `judge:<model>:<plan-id>`.
+- **Composition.** 2–3 independent read-only raters, each a *different* model — and where lanes allow, a different provider (default: gpt-5.6-sol via `codex`, glm-5.2 via `opencode`, plus a native Claude tier; fewer lanes installed → fewer judges, never fewer than two where two models exist). Dispatch shapes and labeling per `delegation.md`; label each `judge:<model>:<plan-id>`.
 - **Brief.** Each judge gets, self-contained: the plan (inlined), the diff, the executor's report, and a fixed rating format — `RATING: 1–10` on correctness / scope / quality, `VERDICT: SHIP | FIX-FIRST`, `TOP ISSUES:` with `file:line` evidence. One judge, all plans in the run — so its ratings are comparable across executors.
 - **Judgment.** Ratings are advisory input to the CEO's verdict, never the verdict (org chart: verdicts move neither down nor out). An issue flagged by a majority of judges reopens **REVISE** on that plan before any PR; a split panel is a signal to read that diff again yourself, not to average the scores.
 - **Record.** Per plan, one line in the run record / plan Status block: why the panel was convened, judges, ratings, and what it changed (reopened, or cleared).

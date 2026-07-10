@@ -4,6 +4,44 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.12.0] — 2026-07-10
+
+### Changed
+- **Roster: gpt-5.5 → gpt-5.6-sol** (`delegation.md`; renames in SKILL.md,
+  `closing-the-loop.md`, README): the codex lane's default is now gpt-5.6-sol
+  (matches `~/.codex/config.toml`), weights cost 9 / intelligence 8 / **taste 8**
+  (was 5). glm-5.2 xhigh re-weighted to cost 8 / intelligence 7 / **taste 7**
+  (was 4). Fallout: routing rule 6 (user-facing needs taste ≥ 7) no longer
+  implies a native Claude tier — gpt-5.6-sol and glm-5.2 xhigh now clear the
+  bar, so quota preservation (rule 1) picks the lane; the executor staffing row
+  adds gpt-5.6-sol for taste-sensitive diffs. The gpt-5.5 behavioural
+  calibration (strict literalist, extra round-trip on plan wrinkles) carries
+  over to gpt-5.6-sol until a real run contradicts it.
+
+### Fixed
+- **Knoxville vault drops** (`init.md` "Knoxville handoff" rework; SKILL.md
+  Hard Rule 1, recon, Phase 4) — linked repos ended runs with vault projects
+  missing most of the reference set (e.g. pid-nuxt lacking `architecture`,
+  `overview`, `data-model`, `concerns`, the decisions index). Three root
+  causes fixed: (1) Hard Rule 1 never sanctioned vault writes, so runs
+  improvised — the linked vault project folder is now an explicit owned
+  destination (with `knoxville sync` sanctioned); (2) only the `--init`
+  primer had a vault mapping — a routing table now maps **every** output
+  (reference set → `docs/` as `doc`, ADRs → `adr/`, plans → `plans/`,
+  mirrors + primer → `agents/`; `--sub-continuous` head-docs stay repo-side)
+  with a file-for-file parity rule and a `docs_list` tick-off as the
+  completion criterion; (3) nothing committed the vault — MCP CRUD
+  auto-commits only under `sync.auto: true` and no `docs_sync` tool exists,
+  so every vault-writing run now ends with `knoxville sync` and confirms
+  `committed` / `no changes`.
+- **Knoxville facts refreshed** against the current repo
+  (`github.com/Havoc45/Knoxville`): vault root read from
+  `~/.config/knoxville/config.json` `vaultRoot` (never assume the default
+  path); project skeleton `adr/ plans/ docs/ agents/ archive/` + `_index.md`
+  + `.knoxville-link.json`; doc types `adr|plan|doc|agent`; tool list now
+  includes `docs_list`, `docs_materialize` (vault → repo write-back,
+  dry-run default), `docs_restore`.
+
 ## [2.11.0] — 2026-07-08
 
 ### Added
