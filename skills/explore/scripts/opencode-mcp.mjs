@@ -35,13 +35,20 @@ const log = (...a) => console.error("[opencode-mcp]", ...a);
 // ---------- opencode server management ----------
 
 async function serverHealth(timeoutMs = 500) {
+  let res;
   try {
-    const res = await fetch(`${BASE}/session/status`, {
+    res = await fetch(`${BASE}/session/status`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
-    return res.ok ? "healthy" : "unhealthy";
   } catch {
     return "down";
+  }
+  if (!res.ok) return "unhealthy";
+  try {
+    await res.json();
+    return "healthy";
+  } catch {
+    return "unhealthy";
   }
 }
 
