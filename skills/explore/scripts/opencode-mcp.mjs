@@ -503,7 +503,7 @@ rl.on("line", async (line) => {
   try {
     msg = JSON.parse(line);
   } catch {
-    log("unparseable line:", line.slice(0, 120));
+    log("unparseable line:", line.length, "bytes");
     return out({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
   }
   const { id, method, params } = msg;
