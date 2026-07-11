@@ -12,6 +12,7 @@
  * Env:
  *   OPENCODE_PORT      port for `opencode serve` (default 4096)
  *   OPENCODE_HOST      hostname (default 127.0.0.1)
+ *   OPENCODE_API_TIMEOUT_MS  cap on API calls (default 30000 = 30s)
  *   OPENCODE_RUN_TIMEOUT_MS  cap on blocking runs (default 1200000 = 20 min)
  *
  * The wrapper auto-starts `opencode serve` if nothing answers on the port,
@@ -27,64 +28,229 @@ const PORT = Number(process.env.OPENCODE_PORT || 4096);
 const HOST = process.env.OPENCODE_HOST || "127.0.0.1";
 const BASE = `http://${HOST}:${PORT}`;
 const RUN_TIMEOUT_MS = Number(process.env.OPENCODE_RUN_TIMEOUT_MS || 1_200_000);
+const DEFAULT_API_TIMEOUT_MS = Number(process.env.OPENCODE_API_TIMEOUT_MS || 30_000);
 
 const log = (...a) => console.error("[opencode-mcp]", ...a);
 
 // ---------- opencode server management ----------
 
-async function serverUp(timeoutMs = 500) {
+async function serverHealth(timeoutMs = 500) {
+  let res;
   try {
-    const res = await fetch(`${BASE}/session/status`, {
+    res = await fetch(`${BASE}/session/status`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
-    return res.ok;
   } catch {
-    return false;
+    return "down";
   }
+  if (!res.ok) return "unhealthy";
+  try {
+    await res.json();
+    return "healthy";
+  } catch {
+    return "unhealthy";
+  }
+}
+
+function commandOutput(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code, signal) => resolve({ code, signal, stdout, stderr }));
+  });
+}
+
+async function listenerCommand() {
+  const found = await commandOutput("lsof", ["-ti", ":" + PORT]);
+  if (found.code !== 0 && found.code !== 1) {
+    throw new Error(`lsof failed while checking port ${PORT}: ${found.stderr.trim()}`);
+  }
+  const candidatePids = [...new Set(found.stdout.split(/\s+/).filter(Boolean).map(Number))]
+    .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
+  const pids = [];
+  for (const pid of candidatePids) {
+    const listening = await commandOutput("lsof", [
+      "-nP",
+      "-a",
+      "-p",
+      String(pid),
+      `-iTCP:${PORT}`,
+      "-sTCP:LISTEN",
+      "-t",
+    ]);
+    if (listening.code === 0) pids.push(pid);
+    else if (listening.code !== 1) {
+      throw new Error(`lsof failed while checking listener pid ${pid}: ${listening.stderr.trim()}`);
+    }
+  }
+  if (pids.length === 0) {
+    if ((await serverHealth()) === "down") return null;
+    throw new Error(`could not identify the process listening on port ${PORT}`);
+  }
+
+  const processes = [];
+  for (const pid of pids) {
+    const inspected = await commandOutput("ps", ["-o", "command=", "-p", String(pid)]);
+    processes.push({ pid, command: inspected.stdout.trim() || "<unknown>" });
+  }
+  if (processes.length !== 1) {
+    const details = processes.map(({ pid, command }) => `${pid} (${command})`).join(", ");
+    throw new Error(`could not safely identify one listener on port ${PORT}: ${details}`);
+  }
+  return processes[0];
+}
+
+function isExpectedServeCommand(command) {
+  const servePattern = /(?:^|[\/\s])opencode\s+serve(?:\s|$)/;
+  const portPattern = new RegExp(`(?:^|\\s)--port(?:\\s+|=)${PORT}(?:\\s|$)`);
+  return servePattern.test(command) && portPattern.test(command);
+}
+
+function processExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    if (err?.code === "ESRCH") return false;
+    if (err?.code === "EPERM") return true;
+    throw err;
+  }
+}
+
+async function waitForProcessExit(pid, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!processExists(pid)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return !processExists(pid);
+}
+
+async function waitForPortFree(timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if ((await serverHealth()) === "down") return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`port ${PORT} did not become free within ${timeoutMs}ms`);
+}
+
+async function replaceUnhealthyServer() {
+  const listener = await listenerCommand();
+  if (!listener) return;
+  const { pid, command } = listener;
+  if (!isExpectedServeCommand(command)) {
+    throw new Error(
+      `port ${PORT} listener pid ${pid} is not opencode serve --port ${PORT}: ${command}`,
+    );
+  }
+
+  log(`stale opencode serve pid ${pid} (unhealthy /session/status) — replacing`);
+  process.kill(pid, "SIGTERM");
+  if (!(await waitForProcessExit(pid, 2000))) {
+    const inspected = await commandOutput("ps", ["-o", "command=", "-p", String(pid)]);
+    const currentCommand = inspected.stdout.trim();
+    if (!isExpectedServeCommand(currentCommand)) {
+      throw new Error(`refusing to SIGKILL pid ${pid}; command changed to: ${currentCommand}`);
+    }
+    log(`stale opencode serve pid ${pid} ignored SIGTERM — sending SIGKILL`);
+    process.kill(pid, "SIGKILL");
+  }
+  await waitForPortFree();
 }
 
 let serverStarting = null; // memoized so concurrent first calls spawn one server
 
 async function ensureServer() {
-  if (await serverUp()) return;
-  serverStarting ??= (async () => {
+  if ((await serverHealth()) === "healthy") return;
+  const starting = (serverStarting ??= (async () => {
+    const health = await serverHealth();
+    if (health === "healthy") return;
+    if (health === "unhealthy") await replaceUnhealthyServer();
     log(`starting opencode serve on ${BASE}`);
     const child = spawn(
       "opencode",
       ["serve", "--port", String(PORT), "--hostname", HOST],
-      { detached: true, stdio: "ignore" },
+      { detached: true, stdio: ["ignore", "ignore", "pipe"] },
     );
+    let childError = null;
+    let childExit = null;
+    let stderrTail = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      stderrTail = (stderrTail + chunk).slice(-2048);
+    });
+    child.on("error", (err) => {
+      childError = err;
+    });
+    child.on("exit", (code, signal) => {
+      childExit = { code, signal };
+    });
     child.unref();
-    for (let i = 0; i < 30; i++) {
-      await new Promise((r) => setTimeout(r, 500));
-      if (await serverUp()) return;
+    try {
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        if ((await serverHealth()) === "healthy") return;
+        if (childError || childExit) break;
+      }
+      const details = [];
+      if (childError) details.push(`spawn error: ${childError.message}`);
+      if (childExit) {
+        details.push(`exit: ${childExit.signal ? `signal ${childExit.signal}` : `code ${childExit.code}`}`);
+      }
+      if (stderrTail.trim()) details.push(`stderr: ${stderrTail.trim()}`);
+      const suffix = details.length ? ` (${details.join("; ")})` : "";
+      throw new Error(`opencode serve did not come up on ${BASE} within 15s${suffix}`);
+    } finally {
+      child.stderr.destroy();
     }
-    throw new Error(`opencode serve did not come up on ${BASE} within 15s`);
-  })();
+  })());
   try {
-    await serverStarting;
-  } catch (err) {
-    serverStarting = null; // allow a retry after a failed start
-    throw err;
+    await starting;
+  } finally {
+    if (serverStarting === starting) serverStarting = null;
   }
 }
 
 async function api(method, path, { directory, body, timeoutMs } = {}) {
   const url = new URL(BASE + path);
   if (directory) url.searchParams.set("directory", directory);
-  const res = await fetch(url, {
-    method,
-    headers: body ? { "content-type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${method} ${path} -> HTTP ${res.status} ${text.slice(0, 300)}`);
+  const requestTimeoutMs = timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: body ? { "content-type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(requestTimeoutMs),
+    });
+    if (!res.ok) {
+      let text = "";
+      try {
+        text = await res.text();
+      } catch (err) {
+        if (err?.name === "TimeoutError" || err?.name === "AbortError") throw err;
+      }
+      throw new Error(`${method} ${path} -> HTTP ${res.status} ${text.slice(0, 300)}`);
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    return ct.includes("json") ? await res.json() : await res.text();
+  } catch (err) {
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+      throw new Error(`${method} ${path} timed out after ${requestTimeoutMs}ms`, { cause: err });
+    }
+    throw err;
   }
-  if (res.status === 204) return null;
-  const ct = res.headers.get("content-type") || "";
-  return ct.includes("json") ? res.json() : res.text();
 }
 
 // ---------- session helpers ----------
@@ -349,7 +515,7 @@ rl.on("line", async (line) => {
   try {
     msg = JSON.parse(line);
   } catch {
-    log("unparseable line:", line.slice(0, 120));
+    log("unparseable line:", line.length, "bytes");
     return out({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
   }
   const { id, method, params } = msg;
