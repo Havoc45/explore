@@ -4,6 +4,44 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.13.0] — 2026-07-11
+
+### Added
+- **Mandatory dispatch-lane preflight probe** (`delegation.md`; SKILL.md Phase 1) —
+  lane detection at recon is now detection *and* health probe: a cheapest-first
+  ladder (presence → model availability → transport health) plus a
+  stale-transport table documenting both live-hit failure shapes and their
+  refresh procedures (stale `codex mcp-server` binary after a CLI upgrade →
+  reconnect, threads resume via `codex exec resume`; stale `opencode serve` →
+  verified kill, wrapper respawns). Replaces the old optional "one-line ping
+  if in doubt" guidance. (PR #1)
+
+### Fixed
+- **opencode-mcp.mjs stale-serve self-heal** — three-state health probe
+  (healthy/unhealthy/down) so a half-alive serve is no longer misread as
+  "nothing listening"; guarded replacement of a verified stale
+  `opencode serve` (command-matched before SIGTERM, re-verified before
+  SIGKILL, foreign listeners refused); startup promise re-arms after a later
+  server death; spawn observed with bounded stderr in failure messages;
+  unconditional API timeouts (default 30s, `OPENCODE_API_TIMEOUT_MS`) with
+  named timeout errors instead of bare `fetch failed`. (PR #2)
+- **bump-version.sh honesty** — `--audit` exits nonzero on drift or
+  undeclared version strings; a bump refuses to start when a declared file is
+  missing (no partial releases); declared config paths validated against
+  absolute/`..` escapes. (PR #3)
+- **Docs freshness** — "live-verified" claims re-verified and re-pinned to
+  codex 0.144.1 / opencode 1.17.18 (first-verified history retained); README
+  now describes Knoxville vault routing; `[2.12.0]`/`[2.11.0]` changelog link
+  refs added; mermaid-verify install comment pins majors; mermaid.live
+  privacy caveat for private repos. (PR #4)
+- **Analyzer robustness** — ignore rules apply to project-relative paths
+  (checkouts under a parent named `build`/`dist` no longer analyze as empty);
+  symlink-escape containment; PEP 621 `pyproject.toml` support with explicit
+  unsupported-layout warnings; lazy traversal with per-entry error handling;
+  deterministic collision-free diagram ids; mermaid-verify fence extraction
+  handles CRLF/indented/info-string fences, rejects non-mermaid info strings,
+  survives inline triple-backticks, and exits 2 on zero blocks. (PR #5)
+
 ## [2.12.0] — 2026-07-10
 
 ### Changed
@@ -444,6 +482,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.13.0]: https://github.com/Havoc45/explore/releases/tag/v2.13.0
 [2.12.0]: https://github.com/Havoc45/explore/releases/tag/v2.12.0
 [2.11.0]: https://github.com/Havoc45/explore/releases/tag/v2.11.0
 [2.10.0]: https://github.com/Havoc45/explore/releases/tag/v2.10.0

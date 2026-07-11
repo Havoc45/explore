@@ -4,7 +4,7 @@ description: Explore a codebase as a read-only senior architect-advisor and char
 license: MIT
 metadata:
   author: Havoc45
-  version: "2.12.0"
+  version: "2.13.0"
 ---
 
 # Explore
