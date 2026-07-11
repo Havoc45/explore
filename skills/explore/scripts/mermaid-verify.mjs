@@ -10,7 +10,7 @@
  *   Ref: https://mermaid.js.org/syntax/sequenceDiagram.html#entity-codes-to-escape-characters
  *
  * Usage:
- *   npm i mermaid jsdom        # one-time, in this folder
+ *   npm i mermaid@11 jsdom@24  # one-time, in this folder
  *   node mermaid-verify.mjs path/to/file.md [more.md ...]
  *
  * Exit code is non-zero if any block fails, so it can gate CI or a pre-commit hook.

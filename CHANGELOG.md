@@ -444,6 +444,8 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.12.0]: https://github.com/Havoc45/explore/releases/tag/v2.12.0
+[2.11.0]: https://github.com/Havoc45/explore/releases/tag/v2.11.0
 [2.10.0]: https://github.com/Havoc45/explore/releases/tag/v2.10.0
 [2.9.0]: https://github.com/Havoc45/explore/releases/tag/v2.9.0
 [2.8.1]: https://github.com/Havoc45/explore/releases/tag/v2.8.1
