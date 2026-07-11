@@ -21,6 +21,26 @@ from typing import Dict, List, Set, Tuple, Optional
 from collections import defaultdict
 
 
+def _rel_parts_or_none(path: Path, root: Path) -> Optional[Tuple[str, ...]]:
+    """Return path components relative to *root*, or ``None`` if the path
+    escapes the project root.
+
+    The lexical check (``relative_to``) is followed by a symlink-containment
+    check: a symlink whose resolved target lies outside the resolved root is
+    treated as escaping.
+    """
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return None
+    if path.is_symlink():
+        try:
+            path.resolve().relative_to(root.resolve())
+        except (ValueError, OSError):
+            return None
+    return rel.parts
+
+
 class PatternDetector:
     """Detects architectural patterns in a project."""
 
@@ -101,16 +121,21 @@ class PatternDetector:
                        'dist', 'build', '.next', 'coverage', '.pytest_cache'}
 
         for item in self.project_path.iterdir():
-            if item.is_dir() and item.name not in ignore_dirs and not item.name.startswith('.'):
-                self.directories.add(item.name.lower())
+            if not (item.is_dir() and item.name not in ignore_dirs
+                    and not item.name.startswith('.')):
+                continue
+            # Skip symlinks whose resolved target escapes the project root
+            if _rel_parts_or_none(item, self.project_path) is None:
+                continue
+            self.directories.add(item.name.lower())
 
-                # Scan files in directory
-                try:
-                    for f in item.rglob('*'):
-                        if f.is_file():
-                            self.files[item.name.lower()].append(f.name.lower())
-                except PermissionError:
-                    pass
+            # Scan files in directory
+            try:
+                for f in item.rglob('*'):
+                    if f.is_file() and _rel_parts_or_none(f, self.project_path) is not None:
+                        self.files[item.name.lower()].append(f.name.lower())
+            except (PermissionError, OSError):
+                pass
 
     def _detect_pattern(self):
         """Detect the primary architectural pattern."""
@@ -200,7 +225,8 @@ class CodeAnalyzer:
 
         for ext in extensions:
             for file_path in self.project_path.rglob(f'*{ext}'):
-                if any(ignored in file_path.parts for ignored in ignore_dirs):
+                rel_parts = _rel_parts_or_none(file_path, self.project_path)
+                if rel_parts is None or any(ignored in rel_parts for ignored in ignore_dirs):
                     continue
 
                 try:
@@ -239,7 +265,8 @@ class CodeAnalyzer:
 
         for ext in extensions:
             for file_path in self.project_path.rglob(f'*{ext}'):
-                if any(ignored in file_path.parts for ignored in ignore_dirs):
+                rel_parts = _rel_parts_or_none(file_path, self.project_path)
+                if rel_parts is None or any(ignored in rel_parts for ignored in ignore_dirs):
                     continue
 
                 try:
@@ -277,7 +304,8 @@ class CodeAnalyzer:
 
         for ext in extensions:
             for file_path in self.project_path.rglob(f'*{ext}'):
-                if any(ignored in file_path.parts for ignored in ignore_dirs):
+                rel_parts = _rel_parts_or_none(file_path, self.project_path)
+                if rel_parts is None or any(ignored in rel_parts for ignored in ignore_dirs):
                     continue
 
                 try:
@@ -340,7 +368,8 @@ class CodeAnalyzer:
         for dir_path in self.project_path.rglob('*'):
             if not dir_path.is_dir():
                 continue
-            if any(ignored in dir_path.parts for ignored in ignore_dirs):
+            rel_parts = _rel_parts_or_none(dir_path, self.project_path)
+            if rel_parts is None or any(ignored in rel_parts for ignored in ignore_dirs):
                 continue
 
             dir_name = dir_path.name
@@ -396,7 +425,8 @@ class LayerViolationDetector:
 
         for ext in extensions:
             for file_path in self.project_path.rglob(f'*{ext}'):
-                if any(ignored in file_path.parts for ignored in ignore_dirs):
+                rel_parts = _rel_parts_or_none(file_path, self.project_path)
+                if rel_parts is None or any(ignored in rel_parts for ignored in ignore_dirs):
                     continue
 
                 try:

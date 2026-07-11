@@ -72,7 +72,8 @@ function lintSequence(code) {
 }
 
 function extract(file) {
-  const txt = fs.readFileSync(file, 'utf8'), out = [], re = /```mermaid\n([\s\S]*?)```/g;
+  const txt = fs.readFileSync(file, 'utf8'), out = [],
+    re = /^[ \t]*```mermaid(?:[ \t][^\r\n]*)?\r?\n([\s\S]*?)^[ \t]*```/gm;
   let m, i = 0;
   while ((m = re.exec(txt))) out.push({ file, idx: ++i, code: m[1].trimEnd() });
   return out;
@@ -88,6 +89,11 @@ async function check(level, code, id) {
 const files = process.argv.slice(2);
 let blocks = [];
 for (const f of files) blocks = blocks.concat(extract(f));
+
+if (blocks.length === 0) {
+  console.log('no mermaid blocks found');
+  process.exit(2);
+}
 
 let bad = 0;
 for (const b of blocks) {

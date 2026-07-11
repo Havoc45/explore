@@ -18,6 +18,7 @@ import sys
 import json
 import argparse
 import re
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Set, Tuple, Optional
 from collections import defaultdict
@@ -85,9 +86,17 @@ class ProjectScanner:
 
     def _analyze_directory(self, dir_path: Path) -> Dict:
         """Analyze a directory to understand its role."""
-        files = list(dir_path.rglob('*'))
-        code_files = [f for f in files if f.is_file() and f.suffix in
-                      ['.py', '.js', '.ts', '.jsx', '.tsx', '.go', '.rs', '.java', '.vue']]
+        code_exts = {'.py', '.js', '.ts', '.jsx', '.tsx', '.go', '.rs', '.java', '.vue'}
+        code_files = []
+        try:
+            for f in dir_path.rglob('*'):
+                try:
+                    if f.is_file() and f.suffix in code_exts:
+                        code_files.append(f)
+                except OSError:
+                    pass
+        except OSError:
+            pass
 
         # Count imports/dependencies within the directory
         imports = set()
@@ -235,6 +244,11 @@ class DiagramGenerator:
 class MermaidGenerator(DiagramGenerator):
     """Generate Mermaid diagrams."""
 
+    def __init__(self, scan_result: Dict):
+        super().__init__(scan_result)
+        self._id_map: Dict[str, str] = {}
+        self._used_ids: Set[str] = set()
+
     def _generate_component_diagram(self) -> str:
         lines = ['graph TD']
 
@@ -242,7 +256,7 @@ class MermaidGenerator(DiagramGenerator):
         for name, info in self.components.items():
             safe_name = self._safe_id(name)
             file_count = info.get('files', 0)
-            lines.append(f'    {safe_name}["{name}<br/>{file_count} files"]')
+            lines.append(f'    {safe_name}["{self._safe_label(name)}<br/>{file_count} files"]')
 
         # Add relationships
         seen = set()
@@ -258,7 +272,7 @@ class MermaidGenerator(DiagramGenerator):
             lines.append('    subgraph External')
             for dep in list(self.external_deps)[:5]:
                 safe_dep = self._safe_id(dep)
-                lines.append(f'        {safe_dep}(("{dep}"))')
+                lines.append(f'        {safe_dep}(("{self._safe_label(dep)}"))')
             lines.append('    end')
 
         return '\n'.join(lines)
@@ -274,7 +288,7 @@ class MermaidGenerator(DiagramGenerator):
                 lines.append(f'    subgraph {layer.title()} Layer')
                 for comp in components:
                     safe_comp = self._safe_id(comp)
-                    lines.append(f'        {safe_comp}["{comp}"]')
+                    lines.append(f'        {safe_comp}["{self._safe_label(comp)}"]')
                 lines.append('    end')
                 lines.append('')
 
@@ -337,12 +351,41 @@ class MermaidGenerator(DiagramGenerator):
         return '\n'.join(lines)
 
     def _safe_id(self, name: str) -> str:
-        """Convert name to safe Mermaid ID."""
-        return re.sub(r'[^a-zA-Z0-9]', '_', name)
+        """Convert name to a safe, collision-free, deterministic Mermaid ID.
+
+        Names that differ only in non-alphanumeric characters (e.g.
+        ``foo-bar`` vs ``foo_bar``) would collide under a simple
+        ``[^a-zA-Z0-9] → _`` substitution.  A short deterministic hash
+        suffix derived from the *original* name is used so that ID
+        assignment never depends on traversal order.
+        """
+        if name in self._id_map:
+            return self._id_map[name]
+        base = re.sub(r'[^a-zA-Z0-9]', '_', name)
+        if base == name and base not in self._used_ids:
+            result = base
+        else:
+            suffix = hashlib.md5(name.encode()).hexdigest()[:8]
+            result = f'{base}_{suffix}'
+            while result in self._used_ids:
+                suffix = hashlib.md5(f'{name}{suffix}'.encode()).hexdigest()[:8]
+                result = f'{base}_{suffix}'
+        self._id_map[name] = result
+        self._used_ids.add(result)
+        return result
+
+    def _safe_label(self, text: str) -> str:
+        """Escape text for use inside Mermaid double-quoted labels."""
+        return text.replace('"', '&quot;')
 
 
 class PlantUMLGenerator(DiagramGenerator):
     """Generate PlantUML diagrams."""
+
+    def __init__(self, scan_result: Dict):
+        super().__init__(scan_result)
+        self._id_map: Dict[str, str] = {}
+        self._used_ids: Set[str] = set()
 
     def _generate_component_diagram(self) -> str:
         lines = ['@startuml', 'skinparam componentStyle rectangle', '']
@@ -424,8 +467,25 @@ class PlantUMLGenerator(DiagramGenerator):
         return '\n'.join(lines)
 
     def _safe_id(self, name: str) -> str:
-        """Convert name to safe PlantUML ID."""
-        return re.sub(r'[^a-zA-Z0-9]', '_', name)
+        """Convert name to a safe, collision-free, deterministic PlantUML ID.
+
+        Uses a deterministic hash suffix derived from the original name
+        so that ID assignment never depends on traversal order.
+        """
+        if name in self._id_map:
+            return self._id_map[name]
+        base = re.sub(r'[^a-zA-Z0-9]', '_', name)
+        if base == name and base not in self._used_ids:
+            result = base
+        else:
+            suffix = hashlib.md5(name.encode()).hexdigest()[:8]
+            result = f'{base}_{suffix}'
+            while result in self._used_ids:
+                suffix = hashlib.md5(f'{name}{suffix}'.encode()).hexdigest()[:8]
+                result = f'{base}_{suffix}'
+        self._id_map[name] = result
+        self._used_ids.add(result)
+        return result
 
 
 class ASCIIGenerator(DiagramGenerator):
