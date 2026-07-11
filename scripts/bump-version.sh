@@ -68,11 +68,23 @@ audit_excludes() {
   python3 -c 'import json,sys; [print(p) for p in json.load(open(sys.argv[1])).get("audit",{}).get("exclude",[])]' "$CONFIG"
 }
 
+validate_config_paths() {
+  local path
+  while IFS=$'\t' read -r path _; do
+    if [[ "$path" == /* || "$path" == *..* ]]; then
+      echo "error: unsafe path in config: $path" >&2
+      exit 1
+    fi
+  done < <(declared_files)
+}
+
 # --- commands ---
 
 cmd_check() {
   local has_drift=0
   local versions=()
+
+  validate_config_paths
 
   echo "Version check:"
   echo ""
@@ -111,7 +123,8 @@ cmd_check() {
 }
 
 cmd_audit() {
-  cmd_check || true
+  local check_status=0
+  cmd_check || check_status=$?
   echo ""
 
   # Current version = most common across declared files
@@ -176,6 +189,10 @@ cmd_audit() {
     echo "Review the above — bumpable files belong in .version-bump.json's files list,"
     echo "historical/record files (e.g. changelogs) in its audit.exclude list."
   fi
+
+  if [[ "$check_status" -ne 0 || "$found_undeclared" -ne 0 ]]; then
+    return 1
+  fi
 }
 
 cmd_bump() {
@@ -186,15 +203,27 @@ cmd_bump() {
     exit 1
   fi
 
+  validate_config_paths
+
+  # Pre-pass: refuse to start if any declared file is missing (a partial bump
+  # leaves the repo with inconsistent versions across manifests).
+  local -a missing_files=()
+  while IFS=$'\t' read -r path _field; do
+    local fullpath="$REPO_ROOT/$path"
+    [[ -f "$fullpath" ]] || missing_files+=("$path")
+  done < <(declared_files)
+  if [[ ${#missing_files[@]} -gt 0 ]]; then
+    echo "error: cannot bump — declared file(s) missing:" >&2
+    for p in "${missing_files[@]}"; do echo "  $p" >&2; done
+    echo "If a write was interrupted mid-loop, restore with git checkout." >&2
+    exit 1
+  fi
+
   echo "Bumping all declared files to $new_version..."
   echo ""
 
   while IFS=$'\t' read -r path field; do
     local fullpath="$REPO_ROOT/$path"
-    if [[ ! -f "$fullpath" ]]; then
-      echo "  SKIP (missing): $path"
-      continue
-    fi
     local old_ver got
     old_ver=$(read_field "$fullpath" "$field")
     write_field "$fullpath" "$new_version"
