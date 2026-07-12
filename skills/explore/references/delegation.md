@@ -50,7 +50,7 @@ Capability economics says *which rung*; the roster says *which model* — and th
 **Per-model calibration** — observed profiles; fold the brief requirements in at dispatch:
 
 - **gpt-5.6-sol** — strict literalist, best protocol fidelity: honors STOP conditions exactly, raises its hand with a precise diagnosis when the plan contradicts itself, never improvises. The cost is one extra round-trip whenever the plan holds a wrinkle a bolder model would resolve itself — budget for it. Best default where deviation must never be silent. Effectively free (quota note above): the default coding workhorse, the standing second-opinion reviewer, and the computer-use verification agent (lane below). *(Profile observed on gpt-5.5; the taste-8 re-rank is operator-validated, the behavioural notes carry over until a 5.6-sol run contradicts them.)*
-- **glm-5.2 xhigh** — the proven coding alternate: slightly below gpt-5.6-sol on capability, cheaper per token, and the model the codex lane fails over to. Best bounded judgment and accounting: self-adjudicates within scope and defends the reasoning openly in ASSUMPTIONS rather than stopping or going silent; also the best finder of adjacent issues. Weaknesses: verbose reports, slowest wall-clock, and its lane drops tool junk (`.codegraph/`, `.omo` — opencode tooling) into the tree — sweep for and remove it after every opencode run, before diff review.
+- **glm-5.2 xhigh** — the proven coding alternate: slightly below gpt-5.6-sol on capability, cheaper per token, and the model the codex lane fails over to. Best bounded judgment and accounting: self-adjudicates within scope and defends the reasoning openly in ASSUMPTIONS rather than stopping or going silent; also the best finder of adjacent issues. Weaknesses: verbose reports, slowest wall-clock, and a host-plugin junk risk — see **opencode lane quirks** below.
 - **sonnet-5** — fastest, cheapest path to a correct result on well-specified mechanical work (one pass, byte-parity with an approved original). Weakness: **silent deviation** — applies pre-adjudicated amendments without surfacing them and leaves the thinnest deviation trail; on a plan where the amendment *hadn't* been adjudicated, that same silence is a REVISE. Its briefs restate the reporting contract explicitly: *record every deviation, however small*.
 
 **Routing rules** — the CEO applies these when staffing the chart:
@@ -82,6 +82,8 @@ Capability economics says *which rung*; the roster says *which model* — and th
 
 **Dispatch transports** — each provider lane is reachable two ways; prefer MCP where registered, shell everywhere else (all shapes below live-verified, codex 0.144.1 / opencode 1.17.18; first verified on 0.142.5 / 1.17.13):
 
+For the opencode lane, **MCP is the dispatch default where registered; shell is the fallback**: two 2026-07-11 shell review runs stalled with zero output while the same brief returned over MCP in seconds.
+
 | Transport | codex | opencode | Use when |
 |---|---|---|---|
 | **MCP server** | `codex mcp-server` → tools `codex` (new thread) / `codex-reply` (continue by `threadId`) | vendored `scripts/opencode-mcp.mjs` over `opencode serve` → `opencode_run` / `opencode_fire` / `opencode_status` / `opencode_wait` / `opencode_steer` / `opencode_abort` | orchestrator-side dispatch: structured ids in the result, live progress events, steerable sessions (mid-run on opencode; between turns on codex) |
@@ -99,7 +101,7 @@ The wrapper auto-starts `opencode serve` (port 4096; `OPENCODE_PORT` overrides) 
 **MCP call shapes** — arguments mirror the shell flags:
 
 - **Worker**: `codex {prompt, sandbox: "read-only", cwd: <repo-root>, approval-policy: "never", config: {model_reasoning_effort: "<effort>"}}` → final text + `threadId`. `opencode_run {prompt, directory: <repo-root>, model: "openrouter/z-ai/glm-5.2", variant: "xhigh"}` → final text + `session_id`.
-- **Executor**: the same with `sandbox: "workspace-write", cwd: <worktree>` / `directory: <worktree>`. Installs need network: `config: {sandbox_workspace_write: {network_access: true}}`, stated in the run record. An opencode executor over MCP only works where the host's opencode config already grants writes — on a write-gated config it stalls on permission asks, so the shell `opencode run --auto` form below is the executor default for that lane.
+- **Executor**: the same with `sandbox: "workspace-write", cwd: <worktree>` / `directory: <worktree>`. For codex in a linked worktree, the live-verified 0.144.1 shape also passes `config: {sandbox_workspace_write: {writable_roots: ["<main-repo>/.git/worktrees/<wt-name>", "<main-repo>/.git/objects", "<main-repo>/.git/refs", "<main-repo>/.git/logs"]}}`. Installs need network: `config: {sandbox_workspace_write: {network_access: true}}`, stated in the run record. An opencode executor over MCP works where the host's opencode config grants writes; otherwise a write-gated config stalls on permission asks, and shell `opencode run --auto` is the executor default **only** for that config.
 - **REVISE / continue** (the agent finished its turn; you send the next one): `codex-reply {threadId, prompt}` — the live server retains the thread's cwd and sandbox. **The codex thread registry is per-server-process**: if the MCP server restarted since dispatch, fall back to shell `codex exec resume` with confinement restated (below) — thread ids interoperate between the two transports. opencode: `opencode_run {session_id, prompt, directory}`.
 - **Mid-run steer** (the agent is still working and heading wrong): `opencode_steer {session_id, prompt}` aborts the in-flight turn and redirects the same session — a true interrupt; `opencode_fire` → `opencode_status` is the async dispatch-plus-heartbeat pair that makes it possible. codex has no mid-turn interrupt over MCP — steer it between turns (`codex-reply`), or kill the shell run and resume.
 - **opencode permission gating rides the host's opencode config through both transports.** An async run stuck in `running` with no new output is usually a pending permission ask — steer or abort it, or dispatch that unit as a shell `opencode run --auto` confined to the worktree.
@@ -120,7 +122,12 @@ The read-only guarantees differ by lane: **codex `-s read-only` is an OS-level s
 Executor — `--execute-level`, confined to the disposable worktree:
 
 ```bash
-codex exec --json -s workspace-write -C <worktree> -c model_reasoning_effort=<effort> \
+codex exec --json -s workspace-write -C <worktree> \
+  --add-dir <main-repo>/.git/worktrees/<wt-name> \
+  --add-dir <main-repo>/.git/objects \
+  --add-dir <main-repo>/.git/refs \
+  --add-dir <main-repo>/.git/logs \
+  -c model_reasoning_effort=<effort> \
   -o <report-file> "<plan, inlined, + executor preamble>"
 opencode run -m openrouter/z-ai/glm-5.2 --variant <high|xhigh> --format json --dir <worktree> --auto \
   "<plan, inlined, + executor preamble>"
@@ -128,11 +135,16 @@ opencode run -m openrouter/z-ai/glm-5.2 --variant <high|xhigh> --format json --d
 
 The two lanes confine differently — know which guarantee you're holding. **codex `workspace-write` rooted at the worktree is an OS-level sandbox** — writes outside it are blocked by construction, so Hard Rules 1–2 hold mechanically; prefer this lane for execution when both exist. (It also blocks *network* by default — a plan whose steps need dependency installs either gets `-c sandbox_workspace_write.network_access=true` on dispatch, stated in the run record since it widens the sandbox to the network, or the orchestrator pre-installs dependencies in the worktree before dispatching.) **opencode `--auto` is permission auto-approval, not filesystem confinement** — the worktree boundary rides on the brief and on review: after any `--auto` run, verify the user's working tree is untouched (`git -C <repo-root> status --porcelain` unchanged) *before* reviewing the worktree diff, and treat any main-tree write as an automatic BLOCK. Keep `-o <report-file>` inside the worktree or scratch. Never `danger-full-access` for workers or executors — the **computer-use verification lane** below is the one sanctioned exception; never `--auto` outside a worktree.
 
+**Linked-worktree git metadata.** A linked worktree keeps its index and refs under the main repo's `.git/worktrees/<name>/`, outside the worktree-rooted sandbox; without the extra roots, `git add` and `git commit` fail (live-verified on 0.144.1) with `fatal: Unable to create '<main-repo>/.git/worktrees/<wt-name>/index.lock': Operation not permitted`. The executor shape grants the narrow set required for normal commits and leaves top-level `<main-repo>/.git/config`, `hooks/`, and `packed-refs` read-only, so the executor cannot install main-repo git hooks or rewrite core config. If an operation needs a top-level path the set misses — for example `packed-refs` after `git gc` — the live-verified fallback is one broad `--add-dir <main-repo>/.git`, accepting that hooks/config write exposure. Re-test outside `/tmp`: codex includes `/tmp` in `workspace-write` by default, masking the failure.
+
 Steering / REVISE — continue the same session instead of re-briefing from zero. **A resumed run inherits no confinement you don't restate**: `codex exec resume` has no `-s`/`-C` flags and re-roots its sandbox at the *invocation cwd* — resuming an executor from the repo root would put the user's tree inside the write scope. Always resume from the same working root and re-pass the dispatch's confinement:
 
 ```bash
-# executor rounds — run FROM INSIDE the worktree, restate the sandbox:
-cd <worktree> && codex exec resume <session-id> -c sandbox_mode="workspace-write" "<review feedback>"
+# executor rounds — run FROM INSIDE the worktree, restate the sandbox and roots
+# (expected extra-roots resume shape; verify on first use):
+cd <worktree> && codex exec resume <session-id> -c sandbox_mode="workspace-write" \
+  -c 'sandbox_workspace_write.writable_roots=["<main-repo>/.git/worktrees/<wt-name>","<main-repo>/.git/objects","<main-repo>/.git/refs","<main-repo>/.git/logs"]' \
+  "<review feedback>"
 opencode run -s <session-id> --dir <worktree> --auto "<review feedback>"
 
 # read-only rounds — same rule with the read-only scope:
@@ -149,10 +161,16 @@ Session ids: the MCP transport returns them structured (`threadId` / `session_id
 - **`-o <file>`** writes only the *final* agent message — capture stdout separately (`--json` JSONL events) if you need the trail.
 - **`--output-schema <file>`** (JSON Schema) forces a structured final response — use it when the orchestrator must parse the result instead of reading prose.
 - **`--add-dir <dir>`** grants an extra writable directory alongside the sandbox root — how a read-confined or repo-confined run gets a scratch/artifact directory.
+- **Worktree git metadata.** `workspace-write` rooted at a linked worktree blocks `git add` / `git commit` with `fatal: Unable to create '<main>/.git/worktrees/<wt>/index.lock': Operation not permitted`; dispatch with the writable-roots set in the executor shape above (live-verified on 0.144.1).
 - **`--skip-git-repo-check`** is required whenever `-C` points outside a git repo (scratch dirs, artifact dirs).
 - **`--ephemeral`** skips session persistence — no resume possible; don't use it for anything that might need a REVISE round.
 - **Model default** rides `~/.codex/config.toml` (gpt-5.6-sol here) — name `-m` only to deviate.
 - Resume re-roots and drops confinement — already covered above; it is the sharpest quirk of the lot.
+
+**opencode lane quirks** — verified on opencode 1.17.18 and the 2026-07-11/12 runs; know these before shell dispatch:
+
+- **Shell-run lifetime.** macOS has no `timeout(1)`: `timeout 90 opencode run …` fails with `command not found: timeout` yet exits 0 through the pipe; harness shell caps kill long runs (Claude Code Bash: 2 min default, 10 min max); and raw `&` runs die orphaned when the parent shell exits. Dispatch with an explicit generous timeout or harness-managed background; output, never the process, is the completion signal.
+- **Host-plugin junk.** The host opencode plugin `oh-my-openagent` (`~/.config/opencode/opencode.json` `plugin: ["oh-my-openagent@latest"]`) drops the `.codegraph` symlink and `.omo/` directory at the session root on every dispatch and regenerates them on the next run. Sweep them after every opencode run before diff review, or remove the plugin from the config used for dispatch.
 
 **Computer-use verification lane (codex)** — gpt-5.6-sol through `codex` is also the **local verification agent** for work that needs a real runtime observed: driving a UI flow, browser automation, iOS/Android simulators, launching a desktop app, capturing screenshots, or any independent runtime check outside the orchestrator's own context. Not for ordinary code reading, typecheck, lint, or tests a normal worker can run. In this skill it slots in as an *observer*, mainly at Phase-5 review time (verify an executed diff actually behaves — see `closing-the-loop.md`) and during recon/audit when a finding needs runtime confirmation. The flow (live-verified end-to-end):
 
@@ -218,6 +236,7 @@ The same values ride both transports: codex takes `-c model_reasoning_effort=<v>
 |---|---|---|
 | `codex mcp-server` | API 400 `"The '<model>' model requires a newer version of Codex"` via MCP while `codex exec` in a fresh shell works. | Reconnect/restart the registered `codex` MCP server (on Claude Code: `/mcp` → reconnect). Reconnect loses the per-process thread registry → continue old threads with `codex exec resume <threadId>`. |
 | `opencode serve` | Any one: wrapper error `opencode serve did not come up on http://127.0.0.1:4096 within 15s` while `lsof -nP -i :4096` shows a listener; or `curl -s -m 5 http://127.0.0.1:4096/session/status` returning `{"name":"UnknownError",...}`; or serve process start date predating the installed binary's upgrade. | `kill <serve-PID>` — verify the PID's command is `opencode serve` first. The wrapper auto-respawns a fresh serve on the next call. Sessions are not lost (opencode persists sessions on disk). |
+| `opencode-mcp.mjs` wrapper (registered MCP process) | Bare `fetch failed` error text — the pre-self-heal fingerprint per `CHANGELOG.md:27` — or behavior missing post-upgrade features while the on-disk wrapper is current. The long-lived process keeps executing pre-upgrade code until refreshed. | Reconnect the MCP server (Claude Code: `/mcp` → reconnect) or restart the session. opencode sessions persist on disk, so nothing is lost. |
 
 **Outcome recording.** The run record states, per lane, the probed-at result: `ok`, `absent`, `refreshed`, or `failed→reassigned`.
 
