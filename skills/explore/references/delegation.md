@@ -161,7 +161,7 @@ Session ids: the MCP transport returns them structured (`threadId` / `session_id
 - **`-o <file>`** writes only the *final* agent message — capture stdout separately (`--json` JSONL events) if you need the trail.
 - **`--output-schema <file>`** (JSON Schema) forces a structured final response — use it when the orchestrator must parse the result instead of reading prose.
 - **`--add-dir <dir>`** grants an extra writable directory alongside the sandbox root — how a read-confined or repo-confined run gets a scratch/artifact directory.
-- **Worktree git metadata.** `workspace-write` rooted at a linked worktree blocks `git add` / `git commit` with `fatal: Unable to create '<main>/.git/worktrees/<wt>/index.lock': Operation not permitted`; dispatch with the writable-roots set in the executor shape above (live-verified on 0.144.1).
+- **Worktree git metadata.** Linked-worktree dispatch needs the extra writable roots; covered in the executor shape above.
 - **`--skip-git-repo-check`** is required whenever `-C` points outside a git repo (scratch dirs, artifact dirs).
 - **`--ephemeral`** skips session persistence — no resume possible; don't use it for anything that might need a REVISE round.
 - **Model default** rides `~/.codex/config.toml` (gpt-5.6-sol here) — name `-m` only to deviate.
@@ -169,7 +169,7 @@ Session ids: the MCP transport returns them structured (`threadId` / `session_id
 
 **opencode lane quirks** — verified on opencode 1.17.18 and the 2026-07-11/12 runs; know these before shell dispatch:
 
-- **Shell-run lifetime.** macOS has no `timeout(1)`: `timeout 90 opencode run …` fails with `command not found: timeout` yet exits 0 through the pipe; harness shell caps kill long runs (Claude Code Bash: 2 min default, 10 min max); and raw `&` runs die orphaned when the parent shell exits. Dispatch with an explicit generous timeout or harness-managed background; output, never the process, is the completion signal.
+- **Shell-run lifetime.** macOS has no `timeout(1)`: `timeout 90 opencode run …` fails with `command not found: timeout`; harness shell caps kill long runs (Claude Code Bash: 2 min default, 10 min max); and raw `&` runs die orphaned when the parent shell exits. Dispatch with an explicit generous timeout or harness-managed background; output, never the process, is the completion signal.
 - **Host-plugin junk.** The host opencode plugin `oh-my-openagent` (`~/.config/opencode/opencode.json` `plugin: ["oh-my-openagent@latest"]`) drops the `.codegraph` symlink and `.omo/` directory at the session root on every dispatch and regenerates them on the next run. Sweep them after every opencode run before diff review, or remove the plugin from the config used for dispatch.
 
 **Computer-use verification lane (codex)** — gpt-5.6-sol through `codex` is also the **local verification agent** for work that needs a real runtime observed: driving a UI flow, browser automation, iOS/Android simulators, launching a desktop app, capturing screenshots, or any independent runtime check outside the orchestrator's own context. Not for ordinary code reading, typecheck, lint, or tests a normal worker can run. In this skill it slots in as an *observer*, mainly at Phase-5 review time (verify an executed diff actually behaves — see `closing-the-loop.md`) and during recon/audit when a finding needs runtime confirmation. The flow (live-verified end-to-end):
