@@ -22,7 +22,14 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdirSync, renameSync, rmSync, statSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 
@@ -34,6 +41,7 @@ const BASE = `http://${HOST}:${PORT}`;
 const RUN_TIMEOUT_MS = Number(process.env.OPENCODE_RUN_TIMEOUT_MS || 1_200_000);
 const DEFAULT_API_TIMEOUT_MS = Number(process.env.OPENCODE_API_TIMEOUT_MS || 30_000);
 const HEAL_LOCK_DIR = `${tmpdir()}/opencode-mcp-heal-${PORT}.lock`;
+const HEAL_LOCK_OWNER = `${HEAL_LOCK_DIR}/owner.pid`;
 
 const log = (...a) => console.error("[opencode-mcp]", ...a);
 
@@ -47,7 +55,7 @@ async function serverHealth(timeoutMs = 500) {
     });
   } catch (err) {
     if (err?.name === "TimeoutError" || err?.name === "AbortError") return "busy";
-    if (err?.cause?.code === "ECONNREFUSED") return "down";
+    if (isConnectionRefused(err)) return "down";
     return "busy";
   }
   if (!res.ok) return "unhealthy";
@@ -69,11 +77,19 @@ async function probeHealth() {
   return states.every((health) => health === states[0]) ? states[0] : "busy";
 }
 
-function commandOutput(command, args) {
+function commandOutput(command, args, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+      const err = new Error(`${command} timed out after ${timeoutMs}ms`);
+      err.name = "CommandTimeoutError";
+      reject(err);
+    }, timeoutMs);
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
@@ -82,8 +98,14 @@ function commandOutput(command, args) {
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
     });
-    child.on("error", reject);
-    child.on("close", (code, signal) => resolve({ code, signal, stdout, stderr }));
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      if (!timedOut) resolve({ code, signal, stdout, stderr });
+    });
   });
 }
 
@@ -186,6 +208,12 @@ async function acquireHealLock(timeoutMs = 20_000) {
   for (;;) {
     try {
       mkdirSync(HEAL_LOCK_DIR, { recursive: false });
+      try {
+        writeFileSync(HEAL_LOCK_OWNER, String(process.pid));
+      } catch (err) {
+        rmSync(HEAL_LOCK_DIR, { recursive: true, force: true });
+        throw err;
+      }
       return;
     } catch (err) {
       if (err?.code !== "EEXIST") throw err;
@@ -217,6 +245,13 @@ async function acquireHealLock(timeoutMs = 20_000) {
 }
 
 function releaseHealLock() {
+  let ownerPid;
+  try {
+    ownerPid = readFileSync(HEAL_LOCK_OWNER, "utf8").trim();
+  } catch {
+    return;
+  }
+  if (ownerPid !== String(process.pid)) return;
   rmSync(HEAL_LOCK_DIR, { recursive: true, force: true });
 }
 
@@ -368,7 +403,9 @@ function isConnectionFailure(err) {
   if (errorChainHas(err, (current) =>
     current?.name === "TimeoutError" || current?.name === "AbortError")) return false;
   return errorChainHas(err, (current) =>
-    current?.message === "fetch failed" || current?.cause?.code === "ECONNREFUSED");
+    current?.message === "fetch failed"
+      || current?.code === "ECONNREFUSED"
+      || current?.cause?.code === "ECONNREFUSED");
 }
 
 function isConnectionRefused(err) {
@@ -632,12 +669,16 @@ async function callTool(name, args) {
       }
     }
     case "opencode_steer": {
-      await api("POST", `/session/${args.session_id}/abort`, { directory });
+      await retryFirstApiCall(
+        () => api("POST", `/session/${args.session_id}/abort`, { directory }),
+      );
       await promptAsync(args.session_id, { ...args, directory });
       return { session_id: args.session_id, steered: true, ...common };
     }
     case "opencode_abort": {
-      await api("POST", `/session/${args.session_id}/abort`, { directory });
+      await retryFirstApiCall(
+        () => api("POST", `/session/${args.session_id}/abort`, { directory }),
+      );
       return { session_id: args.session_id, aborted: true, ...common };
     }
     default:
