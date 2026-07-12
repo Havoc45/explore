@@ -141,7 +141,7 @@ Steering / REVISE — continue the same session instead of re-briefing from zero
 
 ```bash
 # executor rounds — run FROM INSIDE the worktree, restate the sandbox and roots
-# (expected extra-roots resume shape; verify on first use):
+# (extra-roots resume shape live-verified on codex-cli 0.144.1):
 cd <worktree> && codex exec resume <session-id> -c sandbox_mode="workspace-write" \
   -c 'sandbox_workspace_write.writable_roots=["<main-repo>/.git/worktrees/<wt-name>","<main-repo>/.git/objects","<main-repo>/.git/refs","<main-repo>/.git/logs"]' \
   "<review feedback>"
