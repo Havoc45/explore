@@ -4,6 +4,48 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.14.0] — 2026-07-12
+
+### Added
+- **Worktree writable-roots dispatch shapes** (`delegation.md`,
+  `closing-the-loop.md`) — the codex executor shapes (shell, MCP, and resume)
+  now grant the narrow main-repo `.git` subpath set a linked worktree needs to
+  commit (`worktrees/<wt>`, `objects`, `refs`, `logs`; top-level `config`,
+  `hooks/`, and `packed-refs` deliberately stay read-only so an executor
+  cannot install main-repo hooks), with a "Linked-worktree git metadata"
+  paragraph carrying the exact failure string and the `/tmp` re-testing trap.
+  All shapes live-verified on codex-cli 0.144.1 — including the
+  restated-roots resume shape, verified by this release's own REVISE rounds.
+  Closes the gap that twice cost runs the codex executor lane. (PR #6)
+- **opencode lane quirks** (`delegation.md`) — MCP is now the stated dispatch
+  default for the opencode lane (shell is the fallback; 2026-07-11 stall
+  evidence); shell-run lifetime quirks documented (no `timeout(1)` on macOS,
+  harness shell caps, raw-`&` orphaning — output is the completion signal);
+  `oh-my-openagent` host-plugin junk provenance named (`.codegraph`, `.omo/`,
+  regenerated per dispatch); stale-transport table gains the stale-wrapper
+  row (bare `fetch failed` = pre-self-heal wrapper code still loaded →
+  reconnect the MCP server). (PR #6)
+- **Wrapper version self-report** (`opencode-mcp.mjs`, now v1.1.0) —
+  `serverInfo.version`, the startup log line, and every wrapper error are
+  version-prefixed, so a stale registered wrapper process is identifiable
+  from any output it emits. (PR #7)
+
+### Fixed
+- **opencode-mcp.mjs serve-healing hardening** — health probe distinguishes
+  timeout ("busy", never kills or spawns) from connection-refused ("down",
+  full error-chain walk), with a 500/1500/3000 ms probe ladder; destructive
+  replacement now requires four consecutive unhealthy readings; healing is
+  serialized across concurrent wrapper processes by a per-port lock with
+  owner-pid release (a resumed stale holder can no longer delete the taker's
+  lock) and 60 s stale takeover via atomic rename; `waitForPortFree` checks
+  socket state (lsof), not HTTP; kills are ESRCH-safe with a process-identity
+  recheck immediately before SIGTERM; a tool call's first API request retries
+  once on connection-level failure only (session creation only on
+  ECONNREFUSED; prompt POSTs never retried); `lsof`/`ps` invocations get 10 s
+  timeouts; `--hostname` joins the serve-command match on non-default hosts.
+  Live smoke suite (fresh start, warm path, busy tolerance, two-wrapper heal
+  race, foreign-listener refusal) passed pre- and post-review. (PR #7)
+
 ## [2.13.0] — 2026-07-11
 
 ### Added
@@ -482,6 +524,7 @@ All notable changes to the `explore` plugin. This project adheres to
   (recon → explore → vet → chart & document) producing a durable system design reference
   under `docs/system-design-reference/` (diagrams, ADRs, risk map).
 
+[2.14.0]: https://github.com/Havoc45/explore/releases/tag/v2.14.0
 [2.13.0]: https://github.com/Havoc45/explore/releases/tag/v2.13.0
 [2.12.0]: https://github.com/Havoc45/explore/releases/tag/v2.12.0
 [2.11.0]: https://github.com/Havoc45/explore/releases/tag/v2.11.0
