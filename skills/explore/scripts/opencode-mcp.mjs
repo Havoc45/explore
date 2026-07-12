@@ -22,13 +22,18 @@
  */
 
 import { spawn } from "node:child_process";
+import { mkdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 
+const VERSION = "1.1.0";
 const PORT = Number(process.env.OPENCODE_PORT || 4096);
-const HOST = process.env.OPENCODE_HOST || "127.0.0.1";
+const DEFAULT_HOST = "127.0.0.1";
+const HOST = process.env.OPENCODE_HOST || DEFAULT_HOST;
 const BASE = `http://${HOST}:${PORT}`;
 const RUN_TIMEOUT_MS = Number(process.env.OPENCODE_RUN_TIMEOUT_MS || 1_200_000);
 const DEFAULT_API_TIMEOUT_MS = Number(process.env.OPENCODE_API_TIMEOUT_MS || 30_000);
+const HEAL_LOCK_DIR = `${tmpdir()}/opencode-mcp-heal-${PORT}.lock`;
 
 const log = (...a) => console.error("[opencode-mcp]", ...a);
 
@@ -40,8 +45,10 @@ async function serverHealth(timeoutMs = 500) {
     res = await fetch(`${BASE}/session/status`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch {
-    return "down";
+  } catch (err) {
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") return "busy";
+    if (err?.cause?.code === "ECONNREFUSED") return "down";
+    return "busy";
   }
   if (!res.ok) return "unhealthy";
   try {
@@ -50,6 +57,16 @@ async function serverHealth(timeoutMs = 500) {
   } catch {
     return "unhealthy";
   }
+}
+
+async function probeHealth() {
+  const states = [];
+  for (const timeoutMs of [500, 1500, 3000]) {
+    const health = await serverHealth(timeoutMs);
+    if (health === "healthy" || health === "busy") return health;
+    states.push(health);
+  }
+  return states.every((health) => health === states[0]) ? states[0] : "busy";
 }
 
 function commandOutput(command, args) {
@@ -72,6 +89,9 @@ function commandOutput(command, args) {
 
 async function listenerCommand() {
   const found = await commandOutput("lsof", ["-ti", ":" + PORT]);
+  if (found.code === 1 && found.stderr.trim()) {
+    throw new Error(`lsof failed while checking port ${PORT}: ${found.stderr.trim()}`);
+  }
   if (found.code !== 0 && found.code !== 1) {
     throw new Error(`lsof failed while checking port ${PORT}: ${found.stderr.trim()}`);
   }
@@ -89,6 +109,9 @@ async function listenerCommand() {
       "-t",
     ]);
     if (listening.code === 0) pids.push(pid);
+    else if (listening.code === 1 && listening.stderr.trim()) {
+      throw new Error(`lsof failed while checking listener pid ${pid}: ${listening.stderr.trim()}`);
+    }
     else if (listening.code !== 1) {
       throw new Error(`lsof failed while checking listener pid ${pid}: ${listening.stderr.trim()}`);
     }
@@ -113,7 +136,11 @@ async function listenerCommand() {
 function isExpectedServeCommand(command) {
   const servePattern = /(?:^|[\/\s])opencode\s+serve(?:\s|$)/;
   const portPattern = new RegExp(`(?:^|\\s)--port(?:\\s+|=)${PORT}(?:\\s|$)`);
-  return servePattern.test(command) && portPattern.test(command);
+  const escapedHost = HOST.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const hostPattern = new RegExp(`(?:^|\\s)--hostname(?:\\s+|=)${escapedHost}(?:\\s|$)`);
+  return servePattern.test(command)
+    && portPattern.test(command)
+    && (HOST === DEFAULT_HOST || hostPattern.test(command));
 }
 
 function processExists(pid) {
@@ -139,15 +166,74 @@ async function waitForProcessExit(pid, timeoutMs) {
 async function waitForPortFree(timeoutMs = 2000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if ((await serverHealth()) === "down") return;
+    const found = await commandOutput("lsof", [
+      "-nP",
+      `-iTCP:${PORT}`,
+      "-sTCP:LISTEN",
+      "-t",
+    ]);
+    if (found.code === 1 && !found.stdout.trim()) return;
+    if (found.code !== 0 && found.code !== 1) {
+      throw new Error(`lsof failed while waiting for port ${PORT}: ${found.stderr.trim()}`);
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`port ${PORT} did not become free within ${timeoutMs}ms`);
 }
 
+async function acquireHealLock(timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      mkdirSync(HEAL_LOCK_DIR, { recursive: false });
+      return;
+    } catch (err) {
+      if (err?.code !== "EEXIST") throw err;
+    }
+
+    try {
+      const ageMs = Date.now() - statSync(HEAL_LOCK_DIR).mtimeMs;
+      if (ageMs > 60_000) {
+        const staleDir = `${HEAL_LOCK_DIR}.stale-${process.pid}-${Date.now()}`;
+        try {
+          renameSync(HEAL_LOCK_DIR, staleDir);
+          log(`taking over stale heal lock for port ${PORT} (${Math.round(ageMs)}ms old)`);
+          rmSync(staleDir, { recursive: true, force: true });
+        } catch (err) {
+          if (err?.code !== "ENOENT") throw err;
+        }
+        continue;
+      }
+    } catch (err) {
+      if (err?.code === "ENOENT") continue;
+      throw err;
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error(`timed out waiting ${timeoutMs}ms for heal lock ${HEAL_LOCK_DIR}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+function releaseHealLock() {
+  rmSync(HEAL_LOCK_DIR, { recursive: true, force: true });
+}
+
+function signalProcess(pid, signal) {
+  try {
+    process.kill(pid, signal);
+    return true;
+  } catch (err) {
+    if (err?.code === "ESRCH") return false;
+    throw err;
+  }
+}
+
 async function replaceUnhealthyServer() {
+  if ((await probeHealth()) !== "unhealthy") return false;
   const listener = await listenerCommand();
-  if (!listener) return;
+  if (!listener) return true;
   const { pid, command } = listener;
   if (!isExpectedServeCommand(command)) {
     throw new Error(
@@ -155,64 +241,80 @@ async function replaceUnhealthyServer() {
     );
   }
 
+  const inspectedBeforeTerm = await commandOutput("ps", ["-o", "command=", "-p", String(pid)]);
+  const currentCommand = inspectedBeforeTerm.stdout.trim();
+  if (!isExpectedServeCommand(currentCommand)) {
+    throw new Error(`refusing to SIGTERM pid ${pid}; command changed to: ${currentCommand}`);
+  }
   log(`stale opencode serve pid ${pid} (unhealthy /session/status) — replacing`);
-  process.kill(pid, "SIGTERM");
+  signalProcess(pid, "SIGTERM");
   if (!(await waitForProcessExit(pid, 2000))) {
     const inspected = await commandOutput("ps", ["-o", "command=", "-p", String(pid)]);
-    const currentCommand = inspected.stdout.trim();
-    if (!isExpectedServeCommand(currentCommand)) {
-      throw new Error(`refusing to SIGKILL pid ${pid}; command changed to: ${currentCommand}`);
+    const commandBeforeKill = inspected.stdout.trim();
+    if (!isExpectedServeCommand(commandBeforeKill)) {
+      throw new Error(`refusing to SIGKILL pid ${pid}; command changed to: ${commandBeforeKill}`);
     }
     log(`stale opencode serve pid ${pid} ignored SIGTERM — sending SIGKILL`);
-    process.kill(pid, "SIGKILL");
+    signalProcess(pid, "SIGKILL");
   }
   await waitForPortFree();
+  return true;
 }
 
 let serverStarting = null; // memoized so concurrent first calls spawn one server
 
 async function ensureServer() {
-  if ((await serverHealth()) === "healthy") return;
+  const initialHealth = await probeHealth();
+  if (initialHealth === "healthy" || initialHealth === "busy") return;
   const starting = (serverStarting ??= (async () => {
-    const health = await serverHealth();
-    if (health === "healthy") return;
-    if (health === "unhealthy") await replaceUnhealthyServer();
-    log(`starting opencode serve on ${BASE}`);
-    const child = spawn(
-      "opencode",
-      ["serve", "--port", String(PORT), "--hostname", HOST],
-      { detached: true, stdio: ["ignore", "ignore", "pipe"] },
-    );
-    let childError = null;
-    let childExit = null;
-    let stderrTail = "";
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk) => {
-      stderrTail = (stderrTail + chunk).slice(-2048);
-    });
-    child.on("error", (err) => {
-      childError = err;
-    });
-    child.on("exit", (code, signal) => {
-      childExit = { code, signal };
-    });
-    child.unref();
+    await acquireHealLock();
     try {
-      for (let i = 0; i < 30; i++) {
-        await new Promise((r) => setTimeout(r, 500));
-        if ((await serverHealth()) === "healthy") return;
-        if (childError || childExit) break;
+      const health = await probeHealth();
+      if (health === "healthy" || health === "busy") return;
+      if (health === "unhealthy") {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if ((await probeHealth()) !== "unhealthy") return;
+        if (!(await replaceUnhealthyServer())) return;
       }
-      const details = [];
-      if (childError) details.push(`spawn error: ${childError.message}`);
-      if (childExit) {
-        details.push(`exit: ${childExit.signal ? `signal ${childExit.signal}` : `code ${childExit.code}`}`);
+      log(`starting opencode serve on ${BASE}`);
+      const child = spawn(
+        "opencode",
+        ["serve", "--port", String(PORT), "--hostname", HOST],
+        { detached: true, stdio: ["ignore", "ignore", "pipe"] },
+      );
+      let childError = null;
+      let childExit = null;
+      let stderrTail = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk) => {
+        stderrTail = (stderrTail + chunk).slice(-2048);
+      });
+      child.on("error", (err) => {
+        childError = err;
+      });
+      child.on("exit", (code, signal) => {
+        childExit = { code, signal };
+      });
+      child.unref();
+      try {
+        for (let i = 0; i < 30; i++) {
+          await new Promise((r) => setTimeout(r, 500));
+          if ((await serverHealth()) === "healthy") return;
+          if (childError || childExit) break;
+        }
+        const details = [];
+        if (childError) details.push(`spawn error: ${childError.message}`);
+        if (childExit) {
+          details.push(`exit: ${childExit.signal ? `signal ${childExit.signal}` : `code ${childExit.code}`}`);
+        }
+        if (stderrTail.trim()) details.push(`stderr: ${stderrTail.trim()}`);
+        const suffix = details.length ? ` (${details.join("; ")})` : "";
+        throw new Error(`opencode serve did not come up on ${BASE} within 15s${suffix}`);
+      } finally {
+        child.stderr.destroy();
       }
-      if (stderrTail.trim()) details.push(`stderr: ${stderrTail.trim()}`);
-      const suffix = details.length ? ` (${details.join("; ")})` : "";
-      throw new Error(`opencode serve did not come up on ${BASE} within 15s${suffix}`);
     } finally {
-      child.stderr.destroy();
+      releaseHealLock();
     }
   })());
   try {
@@ -250,6 +352,36 @@ async function api(method, path, { directory, body, timeoutMs } = {}) {
       throw new Error(`${method} ${path} timed out after ${requestTimeoutMs}ms`, { cause: err });
     }
     throw err;
+  }
+}
+
+function errorChainHas(err, predicate) {
+  const seen = new Set();
+  for (let current = err; current && !seen.has(current); current = current.cause) {
+    seen.add(current);
+    if (predicate(current)) return true;
+  }
+  return false;
+}
+
+function isConnectionFailure(err) {
+  if (errorChainHas(err, (current) =>
+    current?.name === "TimeoutError" || current?.name === "AbortError")) return false;
+  return errorChainHas(err, (current) =>
+    current?.message === "fetch failed" || current?.cause?.code === "ECONNREFUSED");
+}
+
+function isConnectionRefused(err) {
+  return errorChainHas(err, (current) => current?.code === "ECONNREFUSED");
+}
+
+async function retryFirstApiCall(action, { sessionCreation = false } = {}) {
+  try {
+    return await action();
+  } catch (err) {
+    if (!isConnectionFailure(err) || (sessionCreation && !isConnectionRefused(err))) throw err;
+    await ensureServer();
+    return action();
   }
 }
 
@@ -450,28 +582,38 @@ async function callTool(name, args) {
   switch (name) {
     case "opencode_run": {
       const session_id =
-        args.session_id || (await createSession({ directory, title: args.title }));
+        args.session_id || (await retryFirstApiCall(
+          () => createSession({ directory, title: args.title }),
+          { sessionCreation: true },
+        ));
       const r = await promptSync(session_id, { ...args, directory });
       return { session_id, directory, ...r };
     }
     case "opencode_fire": {
       const session_id =
-        args.session_id || (await createSession({ directory, title: args.title }));
+        args.session_id || (await retryFirstApiCall(
+          () => createSession({ directory, title: args.title }),
+          { sessionCreation: true },
+        ));
       await promptAsync(session_id, { ...args, directory });
       return { session_id, directory, dispatched: true };
     }
     case "opencode_status": {
-      const running = await isRunning(args.session_id, directory);
+      const running = await retryFirstApiCall(() => isRunning(args.session_id, directory));
       const { last, replied } = await readMessages(args.session_id, directory);
       return { session_id: args.session_id, running, replied, last, ...common };
     }
     case "opencode_wait": {
       const cap = (args.timeout_s ?? 600) * 1000;
       const deadline = Date.now() + cap;
+      let firstStatus = true;
       // done = idle AND the last prompt answered; `!running` alone races the
       // async fork (still-starting sessions read as idle).
       for (;;) {
-        const running = await isRunning(args.session_id, directory);
+        const running = firstStatus
+          ? await retryFirstApiCall(() => isRunning(args.session_id, directory))
+          : await isRunning(args.session_id, directory);
+        firstStatus = false;
         const { last, replied } = await readMessages(args.session_id, directory);
         if (!running && replied) {
           return { session_id: args.session_id, running: false, replied, last, ...common };
@@ -515,7 +657,7 @@ rl.on("line", async (line) => {
   try {
     msg = JSON.parse(line);
   } catch {
-    log("unparseable line:", line.length, "bytes");
+    log("unparseable line:", Buffer.byteLength(line), "bytes");
     return out({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
   }
   const { id, method, params } = msg;
@@ -532,7 +674,7 @@ rl.on("line", async (line) => {
             ? params.protocolVersion
             : "2025-03-26",
           capabilities: { tools: {} },
-          serverInfo: { name: "opencode-mcp", version: "1.0.0" },
+          serverInfo: { name: "opencode-mcp", version: VERSION },
         },
       });
     } else if (method === "ping") {
@@ -565,7 +707,7 @@ rl.on("line", async (line) => {
       jsonrpc: "2.0",
       id,
       result: {
-        content: [{ type: "text", text: String(err?.message || err) }],
+        content: [{ type: "text", text: `[opencode-mcp v${VERSION}] ${String(err?.message || err)}` }],
         isError: true,
       },
     });
@@ -573,4 +715,4 @@ rl.on("line", async (line) => {
 });
 
 rl.on("close", () => process.exit(0));
-log(`ready — opencode target ${BASE}`);
+log(`ready — opencode-mcp v${VERSION}, opencode target ${BASE}`);
