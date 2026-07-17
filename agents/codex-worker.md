@@ -47,10 +47,12 @@ cd <worktree> && codex exec resume <session-id> -c sandbox_mode="workspace-write
 - **Network.** `workspace-write` blocks network by default; a brief needing installs gets `-c sandbox_workspace_write.network_access=true`, and your report must state the sandbox was widened.
 - **`--skip-git-repo-check`** whenever `-C` points outside a git repo.
 - **Model.** The lane default (`~/.codex/config.toml`, gpt-5.6-sol) is correct; pass `-m` only when the brief names a model. Pass `--output-schema <file>` when the brief demands parseable output.
-- Never `-s danger-full-access` unless the brief is explicitly a computer-use verification unit (GUI, simulator, screenshots) — then artifacts and report go to a scratch dir and the brief stays observe-and-report.
+- **Browser/devtools work**: the codex host config ships `chrome-devtools` and `playwright` MCP servers (enabled) — web-runtime units (driving pages, console/network reads, performance traces, web screenshots) stay under `-s workspace-write` and the brief tells the worker to use those tools. Never `-s danger-full-access` unless the brief is explicitly an OS-level computer-use unit (native GUI, simulators, desktop apps) — then artifacts and report go to a scratch dir and the brief stays observe-and-report.
 
 ## Reporting
 
-Start your reply with `[gpt-5.6-sol]` (the UI shows this wrapper's model; the label is the only truth about who worked). Then the report file's content verbatim, then nothing. If the run fails to launch, return the exact error output and stop — no retries beyond one, no improvisation.
+Time every run: capture `START=$(date +%s)` before the dispatch and compute elapsed when the report file lands. Every Bash call's description starts `[gpt-5.6-sol @ <effort>]` so the dispatch is identifiable while it runs.
+
+Start your reply with `[gpt-5.6-sol @ <effort> · ran <Xm Ys>]` — the UI shows this wrapper's model and clock, so this line is the only truth about who worked, at what effort, for how long. Then the report file's content verbatim, then nothing. If the run fails to launch, return the exact error output and stop — no retries beyond one, no improvisation.
 
 Full lane doctrine (roster, effort mapping, preflight probe): `${CLAUDE_PLUGIN_ROOT}/skills/explore/references/delegation.md` — consult only when the brief conflicts with a shape above.

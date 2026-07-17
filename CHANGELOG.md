@@ -4,6 +4,26 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.15.1] — 2026-07-17
+
+### Changed
+- **Effort + runtime in dispatch labels and wrapper reports**
+  (`delegation.md`, `agents/codex-worker.md`, `agents/opencode-worker.md`) —
+  the labeling rule now puts effort beside the model in every agent label
+  (`gpt-5.6-sol@high:review-auth`) and shell-run description
+  (`[gpt-5.6-sol @ high] audit: …`), and lane wrapper reports open
+  `[<model> @ <effort> · ran <Xm Ys>]` — elapsed timed by the wrapper from
+  dispatch, since the harness UI clock measures the wrapper, not the
+  worker, and dies with the widget. Both agents time runs via
+  `date +%s` around the dispatch.
+- **Chrome DevTools on the codex lane** (`delegation.md`,
+  `agents/codex-worker.md`) — codex host config ships `chrome-devtools`
+  and `playwright` MCP servers (enabled; verified via `codex mcp list`),
+  so web-runtime verification (driving pages, console/network reads,
+  performance traces, web screenshots) rides those tools under plain
+  `workspace-write`; `danger-full-access` narrowed to OS-level GUI,
+  simulators, and desktop apps.
+
 ## [2.15.0] — 2026-07-17
 
 ### Added
