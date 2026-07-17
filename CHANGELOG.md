@@ -4,6 +4,22 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.15.2] — 2026-07-17
+
+### Changed
+- **Version pins re-verified on codex-cli 0.144.5 / opencode 1.18.3**
+  (`delegation.md`) — after host CLI upgrades, live re-verification of the
+  load-bearing claims: usage probe ok on both lanes; opencode wrapper
+  auto-respawned a fresh 1.18.3 serve after the stale 1.17.18 kill and a
+  glm-5.2 xhigh MCP dispatch returned in 3 s (`opencode_health` reports
+  the new server version); codex read-only smoke ok; the worktree
+  writable-roots executor shape commits cleanly on 0.144.5 (main tree
+  untouched, verification worktree removed); the stdin-hang quirk
+  re-tested and STILL PRESENT on 0.144.5 (`</dev/null` stays mandatory).
+  The resume-with-restated-roots shape pin deliberately stays 0.144.1
+  (not re-run this pass). Transport header, worktree paragraphs, and both
+  lane-quirk headers updated to the verified versions.
+
 ## [2.15.1] — 2026-07-17
 
 ### Changed
