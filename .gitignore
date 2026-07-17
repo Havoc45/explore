@@ -4,3 +4,6 @@
 CLAUDE.md
 AGENTS.md
 .knoxville.json
+
+# python bytecode (usage_probe.py imports)
+__pycache__/

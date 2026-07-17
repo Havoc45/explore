@@ -2,9 +2,9 @@
 /**
  * opencode-mcp.mjs — minimal stdio MCP server wrapping `opencode serve`.
  *
- * Exposes opencode as a minion platform (dispatch / steer / abort) with six
- * lean tools instead of a broad API surface, so the orchestrator's context
- * stays small. Zero dependencies; Node 18+ (global fetch).
+ * Exposes opencode as a minion platform (dispatch / steer / abort / health)
+ * with seven lean tools instead of a broad API surface, so the orchestrator's
+ * context stays small. Zero dependencies; Node 18+ (global fetch).
  *
  * Register (Claude Code):
  *   claude mcp add --scope user opencode -- node /path/to/opencode-mcp.mjs
@@ -33,7 +33,7 @@ import {
 import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 const PORT = Number(process.env.OPENCODE_PORT || 4096);
 const DEFAULT_HOST = "127.0.0.1";
 const HOST = process.env.OPENCODE_HOST || DEFAULT_HOST;
@@ -64,6 +64,19 @@ async function serverHealth(timeoutMs = 500) {
     return "healthy";
   } catch {
     return "unhealthy";
+  }
+}
+
+async function globalHealth(timeoutMs = 1500) {
+  // GET /global/health -> { healthy, version } (absent on very old serves).
+  try {
+    const res = await fetch(`${BASE}/global/health`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
   }
 }
 
@@ -602,6 +615,18 @@ const TOOLS = [
       required: ["session_id"],
     },
   },
+  {
+    name: "opencode_health",
+    description:
+      "Report-only health dashboard: server reachability (down/healthy/busy/unhealthy), opencode server version, wrapper version (stale-wrapper detection), and running-session counts. Pass session_id for that session's live status. Never starts or heals the server — dispatch tools do that on their next call.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: { type: "string", description: "Also report this session's status." },
+        ...COMMON_PROPS,
+      },
+    },
+  },
 ];
 
 async function isRunning(sessionID, directory) {
@@ -611,7 +636,31 @@ async function isRunning(sessionID, directory) {
   return false;
 }
 
+async function healthReport(args) {
+  const report = { wrapper_version: VERSION, base: BASE, server: await probeHealth() };
+  if (report.server === "down") return report;
+  const g = await globalHealth();
+  if (g) {
+    report.server_version = g.version;
+    report.server_healthy = g.healthy;
+  }
+  try {
+    const statuses = await api("GET", "/session/status", {
+      directory: args.directory,
+      timeoutMs: 5000,
+    });
+    const entries = Object.entries(statuses || {});
+    report.sessions_total = entries.length;
+    report.sessions_running = entries.filter(([, s]) => s?.type && s.type !== "idle").length;
+    if (args.session_id) report.session = statuses?.[args.session_id] ?? null;
+  } catch (err) {
+    report.session_status_error = String(err?.message || err);
+  }
+  return report;
+}
+
 async function callTool(name, args) {
+  if (name === "opencode_health") return healthReport(args); // report-only: no ensureServer
   await ensureServer();
   const directory = args.directory || process.cwd();
   const common = { directory };
@@ -644,6 +693,7 @@ async function callTool(name, args) {
       const cap = (args.timeout_s ?? 600) * 1000;
       const deadline = Date.now() + cap;
       let firstStatus = true;
+      let idleUnreplied = 0;
       // done = idle AND the last prompt answered; `!running` alone races the
       // async fork (still-starting sessions read as idle).
       for (;;) {
@@ -654,6 +704,23 @@ async function callTool(name, args) {
         const { last, replied } = await readMessages(args.session_id, directory);
         if (!running && replied) {
           return { session_id: args.session_id, running: false, replied, last, ...common };
+        }
+        // Stall: idle with the prompt still unanswered. Right after dispatch
+        // that state is normal for a beat or two, but persisting means the
+        // prompt died server-side without an assistant message (log shape:
+        // `prompt_async failed` — bad model id, provider/stream error) and
+        // no amount of waiting will flip it. Report instead of burning the cap.
+        idleUnreplied = !running && !replied ? idleUnreplied + 1 : 0;
+        if (idleUnreplied >= 15) {
+          return {
+            session_id: args.session_id,
+            running: false,
+            replied: false,
+            stalled: true,
+            last,
+            hint: "session idle ~30s with the prompt unanswered — the prompt died server-side (bad model id, provider/stream error, or a pending permission ask). Run opencode_health, then re-fire or steer this session.",
+            ...common,
+          };
         }
         if (Date.now() >= deadline) {
           return {

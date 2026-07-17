@@ -86,7 +86,7 @@ For the opencode lane, **MCP is the dispatch default where registered; shell is 
 
 | Transport | codex | opencode | Use when |
 |---|---|---|---|
-| **MCP server** | `codex mcp-server` → tools `codex` (new thread) / `codex-reply` (continue by `threadId`) | vendored `scripts/opencode-mcp.mjs` over `opencode serve` → `opencode_run` / `opencode_fire` / `opencode_status` / `opencode_wait` / `opencode_steer` / `opencode_abort` | orchestrator-side dispatch: structured ids in the result, live progress events, steerable sessions (mid-run on opencode; between turns on codex) |
+| **MCP server** | `codex mcp-server` → tools `codex` (new thread) / `codex-reply` (continue by `threadId`) | vendored `scripts/opencode-mcp.mjs` over `opencode serve` → `opencode_run` / `opencode_fire` / `opencode_status` / `opencode_wait` / `opencode_steer` / `opencode_abort` / `opencode_health` | orchestrator-side dispatch: structured ids in the result, live progress events, steerable sessions (mid-run on opencode; between turns on codex) |
 | **Shell run** | `codex exec --json` | `opencode run --format json` | no MCP registration; a harness without MCP; or dispatch from *inside a subagent* — subagent→MCP calls fail unreliably on some harnesses, shell is the universal fallback |
 
 One-time registration (Claude Code shown; other MCP clients take the same commands):
@@ -96,7 +96,7 @@ claude mcp add --scope user codex -- codex mcp-server
 claude mcp add --scope user opencode -- node <explore-repo>/skills/explore/scripts/opencode-mcp.mjs
 ```
 
-The wrapper auto-starts `opencode serve` (port 4096; `OPENCODE_PORT` overrides) and roots every call at its `directory` argument, so one server drives every repo and worktree. (Broad alternative: the `opencode-mcp` npm package — ~80 tools; the vendored wrapper stays at six on purpose.)
+The wrapper auto-starts `opencode serve` (port 4096; `OPENCODE_PORT` overrides) and roots every call at its `directory` argument, so one server drives every repo and worktree. (Broad alternative: the `opencode-mcp` npm package — ~80 tools; the vendored wrapper stays at seven on purpose. `opencode_health` is the report-only seventh: server reachability + version, wrapper version, session counts — it never starts or heals anything.)
 
 **MCP call shapes** — arguments mirror the shell flags:
 
@@ -105,6 +105,7 @@ The wrapper auto-starts `opencode serve` (port 4096; `OPENCODE_PORT` overrides) 
 - **REVISE / continue** (the agent finished its turn; you send the next one): `codex-reply {threadId, prompt}` — the live server retains the thread's cwd and sandbox. **The codex thread registry is per-server-process**: if the MCP server restarted since dispatch, fall back to shell `codex exec resume` with confinement restated (below) — thread ids interoperate between the two transports. opencode: `opencode_run {session_id, prompt, directory}`.
 - **Mid-run steer** (the agent is still working and heading wrong): `opencode_steer {session_id, prompt}` aborts the in-flight turn and redirects the same session — a true interrupt; `opencode_fire` → `opencode_status` is the async dispatch-plus-heartbeat pair that makes it possible. codex has no mid-turn interrupt over MCP — steer it between turns (`codex-reply`), or kill the shell run and resume.
 - **opencode permission gating rides the host's opencode config through both transports.** An async run stuck in `running` with no new output is usually a pending permission ask — steer or abort it, or dispatch that unit as a shell `opencode run --auto` confined to the worktree.
+- **`stalled: true` from `opencode_wait` is a dead prompt, not a slow one.** The session went idle with the prompt unanswered for ~30s: the prompt died server-side after the 204 (log fingerprint `prompt_async failed` — bad model id, provider/stream error such as an OpenRouter 502 or socket close, or a pending permission ask). Waiting longer never flips it: run `opencode_health`, fix what it shows (model id, stale wrapper), re-fire the same session once, then reassign the lane if it stalls again.
 
 **Shell command shapes** (adjust model ids to the host's config):
 
@@ -193,7 +194,7 @@ codex exec \
 
 Sandbox selection: `-s danger-full-access` **only** for genuine GUI automation, simulators, desktop app launching, screenshots, or access outside the repo — it is unsandboxed, so the brief itself is the only constraint: keep it observe-and-report, never destructive. For non-GUI runtime checks that need only the repo + artifact dir, prefer `-s workspace-write`. Add `--skip-git-repo-check` when `-C` isn't a git repo. Artifacts and report live in `$ARTIFACT_DIR` (scratch), never the user's tree. Launching apps/simulators/browsers to verify the requested work needs no permission ask; anything that would disrupt the user's environment beyond that (closing their apps, changing system settings, acting on real accounts or data) does. Label the run `[gpt-5.6-sol] computer-use: <flow>` per the labeling rule.
 
-**gpt-5.6-sol inside native workflow fan-outs (wrapper pattern).** A harness's workflow/agent `model` parameter takes only native models — it cannot name gpt-5.6-sol. To put codex work inside a native fan-out, spawn a **thin native wrapper** (cheapest native tier, low effort) whose brief is: write the self-contained codex prompt, run `codex exec` via shell, return the report (structured output on the wrapper if the harness supports it). Rules that keep the pattern honest: label the wrapper `gpt-5.6-sol:<task>` (labeling rule above — the UI shows the wrapper's model, the label is the only truth); parallel codex *implementation* wrappers each get an isolated worktree, or their edits collide in the shared checkout; and a harness token budget counts only native tokens — codex work is invisible to it, so budget math must not read "cheap" as "idle".
+**gpt-5.6-sol inside native workflow fan-outs (wrapper pattern).** A harness's workflow/agent `model` parameter takes only native models — it cannot name gpt-5.6-sol. To put codex work inside a native fan-out, spawn a **thin native wrapper** (cheapest native tier, low effort) whose brief is: write the self-contained codex prompt, run `codex exec` via shell, return the report (structured output on the wrapper if the harness supports it). On Claude Code the pattern ships pre-built: the plugin's `codex-worker` and `opencode-worker` agents (`agents/`) are these wrappers with every lane quirk baked in — dispatch them by name instead of hand-rolling the wrapper brief; other harnesses build the wrapper manually per this paragraph. Rules that keep the pattern honest: label the wrapper `gpt-5.6-sol:<task>` (labeling rule above — the UI shows the wrapper's model, the label is the only truth); parallel codex *implementation* wrappers each get an isolated worktree, or their edits collide in the shared checkout; and a harness token budget counts only native tokens — codex work is invisible to it, so budget math must not read "cheap" as "idle".
 
 **Minion platforms — tier-3 nesting.** Both lanes can spawn their *own* native subagents, so one lane dispatch can be a **manager with minions** instead of a single worker:
 
@@ -228,7 +229,7 @@ The same values ride both transports: codex takes `-c model_reasoning_effort=<v>
 
 1. **Presence:** `command -v codex opencode`.
 2. **Model availability:** for codex, `codex exec -s read-only -c model_reasoning_effort=low "Reply with exactly: OK" </dev/null` (auth + model, ~2k tokens); for opencode, `opencode models | grep -F "<model-id>"` (model listed, free, no API call).
-3. **Transport health:** check only the transport the run will use. For MCP, make one minimal MCP call per lane (a codex tool call or `opencode_run`); a shell lane needs no extra check beyond the model ping.
+3. **Transport health:** check only the transport the run will use. For MCP: codex gets one minimal tool call; opencode gets `opencode_health` (free, no model spend) — it reports server state, server version, and `wrapper_version` in one shot, catching a stale wrapper before the first dispatch. A shell lane needs no extra check beyond the model ping.
 
 **Stale-transport failure shapes and refresh**
 
@@ -236,7 +237,7 @@ The same values ride both transports: codex takes `-c model_reasoning_effort=<v>
 |---|---|---|
 | `codex mcp-server` | API 400 `"The '<model>' model requires a newer version of Codex"` via MCP while `codex exec` in a fresh shell works. | Reconnect/restart the registered `codex` MCP server (on Claude Code: `/mcp` → reconnect). Reconnect loses the per-process thread registry → continue old threads with `codex exec resume <threadId>`. |
 | `opencode serve` | Any one: wrapper error `opencode serve did not come up on http://127.0.0.1:4096 within 15s` while `lsof -nP -i :4096` shows a listener; or `curl -s -m 5 http://127.0.0.1:4096/session/status` returning `{"name":"UnknownError",...}`; or serve process start date predating the installed binary's upgrade. | `kill <serve-PID>` — verify the PID's command is `opencode serve` first. The wrapper auto-respawns a fresh serve on the next call. Sessions are not lost (opencode persists sessions on disk). |
-| `opencode-mcp.mjs` wrapper (registered MCP process) | Bare `fetch failed` error text — the pre-self-heal fingerprint per `CHANGELOG.md:27` — or behavior missing post-upgrade features while the on-disk wrapper is current. The long-lived process keeps executing pre-upgrade code until refreshed. | Reconnect the MCP server (Claude Code: `/mcp` → reconnect) or restart the session. opencode sessions persist on disk, so nothing is lost. |
+| `opencode-mcp.mjs` wrapper (registered MCP process) | Definitive check: `opencode_health` reports `wrapper_version` — compare against the on-disk `VERSION` in `scripts/opencode-mcp.mjs` (also logged at startup: `ready — opencode-mcp v<X>`); a mismatch is a stale wrapper. Legacy fingerprints: bare `fetch failed` error text (pre-self-heal, per `CHANGELOG.md:27`), or behavior missing post-upgrade features while the on-disk wrapper is current. The long-lived process keeps executing pre-upgrade code until refreshed. | Reconnect the MCP server (Claude Code: `/mcp` → reconnect) or restart the session. opencode sessions persist on disk, so nothing is lost. |
 
 **Outcome recording.** The run record states, per lane, the probed-at result: `ok`, `absent`, `refreshed`, or `failed→reassigned`.
 

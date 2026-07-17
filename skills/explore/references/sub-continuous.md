@@ -8,7 +8,15 @@ The discipline is unchanged — read-only on source, evidence-cited, vetted befo
 
 A long exploration runs into two independent ceilings; this mode respects both:
 
-1. **Quota** — the rolling usage limit (the hourly/rolling window typical of any subscription AI plan). This is the primary budget. Read it with the harness's usage command:
+1. **Quota** — the rolling usage limit (the hourly/rolling window typical of any subscription AI plan). This is the primary budget. Read it with the bundled **usage probe** — the harness's `/usage` meter is human-only, but the probe reads the same rate-limit surface and prints JSON an agent can act on:
+
+   ```bash
+   python3 <plugin-root>/skills/explore/scripts/usage_probe.py --provider claude
+   # → {"ok":true,"status":"allowed","session_pct":9,"session_reset_min":47,"weekly_pct":9,"weekly_reset_min":2590,...}
+   python3 <plugin-root>/skills/explore/scripts/usage_probe.py --provider codex   # the codex lane's own window — pre-flight §5
+   ```
+
+   `session_*` is the rolling window (Claude 5h / codex primary), `weekly_*` the long window; `*_pct` is percent **used**, so `remaining% = 100 − session_pct`, and `session_reset_min` is the reset time the refresh loop schedules against. The claude probe spends one 1-token haiku call per read (the codex read is free); budget reads stay nearly free. `--interval N` turns it into a background poller when a session wants a standing meter. On `ok: false` (`no_credentials`, `token_expired` — the probe won't rewrite credentials unless invoked with `--allow-refresh`), fall back to the harness's usage command:
 
    | Harness | Usage command |
    |---|---|
@@ -26,14 +34,14 @@ Either ceiling approaching its reserve triggers a checkpoint. (Related Claude Co
 
 ## The budget pre-flight (run first, every session)
 
-1. **Read the budget.** `/usage` → `remaining%` and reset time; `/context` → context headroom. Record both in the head-doc ledger — plus whether the plan is already in **overage/credits** territory (see the credits guard below; if so, this session doesn't start units at all).
+1. **Read the budget.** The usage probe (above) → `remaining%` and reset time; `/context` → context headroom. Record both in the head-doc ledger — plus whether the plan is already in **overage/credits** territory (see the credits guard below; if so, this session doesn't start units at all).
 2. **Hold back a reserve.** Checkpointing a context-heavy session is *not* free (writing the head-doc and any partial drafts costs tokens), so reserve headroom and stop starting new units once you cross it:
    - `CHECKPOINT_RESERVE` — default **20%** of the quota window (raise it for big repos, where the checkpoint write is larger).
    - `CONTEXT_RESERVE` — default **15%** of the context window.
    - **The 90% line is hard.** Whatever the reserve math or a bad calibration says, the checkpoint write must *complete* before 90% of the quota window is consumed — the graceful stop lands at ≤90% used (≥10% remaining), never past it. The reserve normally stops a session well before this; the 90% line is the backstop, and crossing it mid-checkpoint is recorded in the ledger as a calibration failure.
 3. **Estimate per-unit cost conservatively, then calibrate.** You usually can't see per-token cost, so estimate in `/usage` percentage points. After the **first** unit completes, re-read `/usage`; the delta is your measured per-unit cost. Use it to decide how many more units fit before the reserve: `affordable_units ≈ (remaining% − CHECKPOINT_RESERVE) / measured_cost_per_unit`. Round **down**.
 4. **Concurrency caution.** Parallel subagents all draw from the *same* pool, so N concurrent agents burn the rolling window ~N× faster even though total quota cost is similar. If the rolling window (not total quota) is the binding constraint, prefer **fewer concurrent agents per session** — concurrency buys wall-clock speed, not quota, and can trip the rate limit sooner. The budget, not the standard Phase-2 caps (≤4 / ≤8), sets concurrency here.
-5. **Offload lanes don't draw the pool.** Provider-CLI dispatches (`codex`, `opencode`, over either transport — the roster in `delegation.md`) spend that provider's own budget, not the Claude quota window, so under quota pressure they are the cheapest concurrency there is: prefer offloading worker units to an installed CLI lane, and when the throttle ladder cuts concurrency, cut **native** subagents first — an offloaded worker costs the pool only the context spent reading its return. Their spend is still real: at pre-flight, classify each lane — a **subscription / included-limit lane** (e.g. codex on a plan) is the free-offload case; a **pay-per-token lane** (e.g. OpenRouter metered billing) is the user's wallet, so staffing it in a campaign requires one explicit user consent, given a projected per-unit cost — the same principle as the credits guard, applied to the other provider. Record the consent and per-lane usage in the ledger. A CLI lane hitting *its own* limit simply idles — reassign or drain that lane, never route its work back onto Claude credits. The credits guard below governs the Claude quota.
+5. **Offload lanes don't draw the pool.** Provider-CLI dispatches (`codex`, `opencode`, over either transport — the roster in `delegation.md`) spend that provider's own budget, not the Claude quota window, so under quota pressure they are the cheapest concurrency there is: prefer offloading worker units to an installed CLI lane, and when the throttle ladder cuts concurrency, cut **native** subagents first — an offloaded worker costs the pool only the context spent reading its return. Their spend is still real: at pre-flight, classify each lane — a **subscription / included-limit lane** (e.g. codex on a plan) is the free-offload case; a **pay-per-token lane** (e.g. OpenRouter metered billing) is the user's wallet, so staffing it in a campaign requires one explicit user consent, given a projected per-unit cost — the same principle as the credits guard, applied to the other provider. The codex lane's window is readable the same way the Claude one is — `usage_probe.py --provider codex` — so its classification and remaining budget go in the ledger as numbers, not guesses, and a lane near its own reset idles by the numbers too. Record the consent and per-lane usage in the ledger. A CLI lane hitting *its own* limit simply idles — reassign or drain that lane, never route its work back onto Claude credits. The credits guard below governs the Claude quota.
 
 ## Pacing — the throttle ladder & the credits guard
 
@@ -157,7 +165,7 @@ The checkpoint write is the **last substantive thing** the session does, while i
 
 A checkpoint caused by quota (reserve hit, or credits) shouldn't strand the campaign until a human remembers it. After the head-doc is written:
 
-1. **Read the reset time** from the usage signal (`/usage` reports it in Claude Code) — the remainder of the window is the delay.
+1. **Read the reset time** from the usage signal (the probe's `session_reset_min`; `/usage` on the fallback path) — the remainder of the window is the delay.
 2. **Schedule one wake** for just after the reset, using the harness's scheduling primitive (Claude Code: a scheduled wake-up or `/loop`; elsewhere: whatever deferred-run or cron surface exists). The scheduled prompt is simply `explore --sub-continuous` — the handle rides `HEAD`, so the wake needs no other state.
 3. **On wake**, the resume algorithm below runs unchanged: read `HEAD` → load the head-doc → fresh pre-flight (new window = new budget) → continue the open threads.
 

@@ -4,6 +4,56 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.15.0] — 2026-07-17
+
+### Added
+- **Usage probe** (`skills/explore/scripts/usage_probe.py`, new) — machine-
+  readable quota meter for the Claude Code and codex lanes: reads the Claude
+  Code OAuth token (keychain / `~/.claude/.credentials.json`) and the
+  `anthropic-ratelimit-unified-{5h,7d}-*` headers, and the Codex CLI token
+  (`$CODEX_HOME/auth.json` / keychain) against
+  `chatgpt.com/backend-api/wham/usage`; prints one JSON object
+  (`session_pct`, `session_reset_min`, `weekly_pct`, `weekly_reset_min`,
+  `status`, `ok`) per provider; `--provider claude|codex|both`,
+  `--interval N` for a standing poller, `--allow-refresh` gate on OAuth
+  refresh (read-only by default — a probe doesn't rewrite credentials).
+  Single-window plans (codex `prolite`: `secondary_window: null`) mirror
+  primary into the weekly fields. Stdlib-only; adapted from
+  JeongJaeSoon/DeskPulse daemon providers. Live-verified on both lanes.
+- **`--sub-continuous` budget reads are now agent-readable**
+  (`sub-continuous.md`) — the pre-flight, per-unit re-reads, lane
+  classification (§5), and refresh-loop reset time all read the usage probe
+  first (`remaining% = 100 − session_pct`); the harness `/usage` table
+  demotes to the `ok: false` fallback path. The codex lane's own window is
+  ledger-recorded from `--provider codex` numbers instead of guesses.
+- **Lane wrapper subagents** (`agents/codex-worker.md`,
+  `agents/opencode-worker.md`, new) — the delegation.md thin-wrapper pattern
+  shipped as Claude Code plugin agents: `codex-worker` (Bash-only forwarding
+  wrapper modeled on openai/codex-plugin-cc `codex-rescue`; preserves every
+  lane quirk — `</dev/null` stdin close, report-file completion signal,
+  worktree writable-roots ×4, resume restates confinement,
+  `--skip-git-repo-check`, network-widening disclosure) and
+  `opencode-worker` (MCP-first with shell fallback; health preflight, stall
+  protocol, variant clamp, `--auto`-only-in-worktree, main-tree check,
+  `oh-my-openagent` junk reporting). Both label reports with the true
+  worker's model per the labeling rule.
+- **`opencode_health` tool** (`opencode-mcp.mjs`, now v1.2.0) — report-only
+  seventh tool: server reachability (`down`/`healthy`/`busy`/`unhealthy`),
+  opencode server version via `GET /global/health`, `wrapper_version`
+  (definitive stale-wrapper detection, closing the 2.14.0 follow-up), and
+  session counts; never starts or heals the server. Preflight probe ladder
+  step 3 and the stale-transport table now use it.
+
+### Fixed
+- **opencode stall diagnosis + detection** — root cause from
+  `~/.local/share/opencode/log/`: prompts die server-side after the 204
+  (`prompt_async failed` — bad model id, OpenRouter 502 / socket-close
+  stream errors), leaving the session idle-but-unanswered, which
+  `opencode_wait` previously waited on for the full timeout. The wait loop
+  now returns `stalled: true` with a diagnostic hint after ~30 s of
+  idle-unanswered polls; `delegation.md` opencode quirks document the
+  fingerprint and the recovery ladder (health → re-fire once → reassign).
+
 ## [2.14.0] — 2026-07-12
 
 ### Added
