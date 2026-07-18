@@ -4,6 +4,24 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.15.4] — 2026-07-18
+
+### Added
+- **Chunked dispatch & the 10-minute watch** (`delegation.md`,
+  `agents/codex-worker.md`, `agents/opencode-worker.md`) — units projected
+  past ~10 minutes dispatch as sections continued on one session
+  (`codex-reply` / `session_id`), each section sized to finish inside the
+  harness shell cap, so a killed run loses one section, not everything;
+  and every dispatched agent, workflow, and shell run is checked at least
+  every 10 minutes until completion (report-file polls for shells,
+  `opencode_wait` rounds with `timeout_s: 600` as the cadence over MCP,
+  harness task-status for native agents), with two movement-free checks
+  escalating to the spiral ladder. The harness shell-cap kill fingerprint
+  is now named in both lane quirk sections: a foreground CLI run killed
+  at the cap surfaces as `failed with exit code 144`. codex-worker
+  additionally asks the orchestrator to chunk an obviously monolithic
+  multi-hour brief instead of dispatching it whole.
+
 ## [2.15.3] — 2026-07-18
 
 ### Fixed
