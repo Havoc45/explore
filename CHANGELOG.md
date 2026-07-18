@@ -4,6 +4,28 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.15.3] — 2026-07-18
+
+### Fixed
+- **opencode 1.18.3 `/session/status` regression — wrapper v1.3.0**
+  (`opencode-mcp.mjs`) — on 1.18.3 the status endpoint returns `{}` even
+  while a session is actively generating, and the assistant message record
+  is created at turn start (`info.time.completed` unset while streaming,
+  stamped with `finish` on completion). The wrapper's old signals both
+  misread this: `opencode_wait` returned instantly with empty text the
+  moment streaming began, and orchestrator follow-ups then aborted the
+  still-running turn (log fingerprint: paired `error=Aborted` on one
+  session — five hit on 2026-07-18 alone). v1.3.0 derives `replied` from
+  the completed stamp (or a terminal error) and `running` from
+  status-busy OR an in-flight assistant record, and the stall detector
+  now requires *no assistant record at all* — a long-thinking turn can
+  never false-positive into a stall/re-fire/abort. Live-verified: an
+  800-line generation blocks 36 s and returns complete; a dead prompt
+  (bogus model) still reports `stalled: true` at ~28 s. Sync
+  `opencode_run` was never affected. `delegation.md` documents the
+  regression and the "wrapper ≥ v1.3.0 on opencode 1.18.3, reconnect
+  after any opencode upgrade" rule.
+
 ## [2.15.2] — 2026-07-17
 
 ### Changed

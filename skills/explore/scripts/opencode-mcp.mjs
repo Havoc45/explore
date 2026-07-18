@@ -33,7 +33,7 @@ import {
 import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 const PORT = Number(process.env.OPENCODE_PORT || 4096);
 const DEFAULT_HOST = "127.0.0.1";
 const HOST = process.env.OPENCODE_HOST || DEFAULT_HOST;
@@ -473,13 +473,21 @@ async function readMessages(sessionID, directory) {
     last = { text, error, tools, cost: m.info?.cost };
     break;
   }
-  // replied: the newest message is an assistant reply — i.e. the last prompt has
-  // been answered. Right after prompt_async the newest message is the user
-  // prompt (or status hasn't flipped to busy yet), so `!running` alone is a
-  // false idle; terminal state is !running && replied.
+  // Terminal vs in-flight (verified on opencode 1.18.3): the assistant message
+  // record is created at turn start with `info.time.completed` unset while it
+  // streams, and stamped (plus `finish`) when the turn ends. So newest-is-
+  // assistant alone is NOT "answered" — the completed stamp is. An erroring
+  // turn also terminates with `info.error` set.
   const newest = msgs[msgs.length - 1];
-  const replied = newest?.info?.role === "assistant";
-  return { last, replied };
+  const newestInfo = newest?.info || {};
+  const isAssistant = newestInfo.role === "assistant";
+  const done = Boolean(newestInfo.time?.completed) || Boolean(newestInfo.error);
+  const replied = isAssistant && done;
+  // streaming: the turn has an in-flight assistant record — the session is
+  // working even when /session/status claims idle (1.18.3 reports {} for busy
+  // sessions; this is the reliable running signal).
+  const streaming = isAssistant && !done;
+  return { last, replied, streaming };
 }
 
 async function promptSync(sessionID, { directory, prompt, model, agent, variant }) {
@@ -685,31 +693,42 @@ async function callTool(name, args) {
       return { session_id, directory, dispatched: true };
     }
     case "opencode_status": {
-      const running = await retryFirstApiCall(() => isRunning(args.session_id, directory));
-      const { last, replied } = await readMessages(args.session_id, directory);
-      return { session_id: args.session_id, running, replied, last, ...common };
+      const statusBusy = await retryFirstApiCall(() => isRunning(args.session_id, directory));
+      const { last, replied, streaming } = await readMessages(args.session_id, directory);
+      return {
+        session_id: args.session_id,
+        running: statusBusy || streaming,
+        replied,
+        last,
+        ...common,
+      };
     }
     case "opencode_wait": {
       const cap = (args.timeout_s ?? 600) * 1000;
       const deadline = Date.now() + cap;
       let firstStatus = true;
       let idleUnreplied = 0;
-      // done = idle AND the last prompt answered; `!running` alone races the
-      // async fork (still-starting sessions read as idle).
+      // done = the last prompt answered (completed stamp) and nothing running.
+      // running = /session/status busy OR an in-flight assistant record
+      // (`streaming`) — on 1.18.3 the status endpoint reports {} for busy
+      // sessions, so streaming is the signal that actually tracks work.
       for (;;) {
-        const running = firstStatus
+        const statusBusy = firstStatus
           ? await retryFirstApiCall(() => isRunning(args.session_id, directory))
           : await isRunning(args.session_id, directory);
         firstStatus = false;
-        const { last, replied } = await readMessages(args.session_id, directory);
+        const { last, replied, streaming } = await readMessages(args.session_id, directory);
+        const running = statusBusy || streaming;
         if (!running && replied) {
           return { session_id: args.session_id, running: false, replied, last, ...common };
         }
-        // Stall: idle with the prompt still unanswered. Right after dispatch
-        // that state is normal for a beat or two, but persisting means the
-        // prompt died server-side without an assistant message (log shape:
-        // `prompt_async failed` — bad model id, provider/stream error) and
-        // no amount of waiting will flip it. Report instead of burning the cap.
+        // Stall: no running signal AND no assistant record for the prompt.
+        // Right after dispatch that state is normal for a beat or two, but
+        // persisting means the prompt died server-side without ever starting
+        // a turn (log shape: `prompt_async failed` — bad model id,
+        // provider/stream error) and no amount of waiting will flip it.
+        // An in-flight assistant record (`streaming`) is progress, never a
+        // stall — long thinking gaps must not trip this.
         idleUnreplied = !running && !replied ? idleUnreplied + 1 : 0;
         if (idleUnreplied >= 15) {
           return {
