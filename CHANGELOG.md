@@ -4,6 +4,22 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.16.2] — 2026-07-27
+
+### Fixed
+- **Model tree + multi-select on every lane in the setup wizard**
+  (`references/setup.md`) — three UX gaps from the second live dry run:
+  every lane's model selector is multi-select (the outcome is a
+  candidate *set* per lane, native and CLI alike, composing with the
+  single-candidate rule); a new render-before-ask rule in "Question
+  mechanics" requires every decision list or table in the assistant's
+  own response text — Step 4 renders one tree of lanes to available
+  models before any model question, never a collapsed tool result; and
+  because a question dialog can overlay the message, decision-critical
+  rows are restated inside the question itself (option descriptions or
+  the tool's preview surface), applied explicitly to the C/I/T confirm
+  step.
+
 ## [2.16.1] — 2026-07-27
 
 ### Fixed
