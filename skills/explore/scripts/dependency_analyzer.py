@@ -45,6 +45,21 @@ def _rel_parts_or_none(path: Path, root: Path) -> Optional[Tuple[str, ...]]:
     return rel.parts
 
 
+def _module_key(name: str) -> str:
+    """Normalize an internal module (top-level directory) name for matching."""
+    return name.strip().lower()
+
+
+def _import_key(imp: str) -> str:
+    """Normalize an import specifier to its top-level module identifier.
+
+    ``_extract_imports`` already reduces an import to a single path component;
+    this additionally drops everything after the first dot, so ``models.user``
+    and ``models.js`` both key on ``models``.
+    """
+    return imp.strip().split('.')[0].strip().lower()
+
+
 class DependencyAnalyzer:
     """Analyzes project dependencies and module coupling."""
 
@@ -102,7 +117,14 @@ class DependencyAnalyzer:
                 data = self._pyproject_data
                 has_poetry = ('tool' in data and 'poetry' in data['tool']
                               and 'dependencies' in data['tool']['poetry'])
-                has_pep621 = ('project' in data and 'dependencies' in data['project'])
+                # A [project] table counts as PEP 621 when it declares either
+                # kind of dependency table; _parse_pep621 reads both, so a
+                # project with only optional-dependencies is not "unsupported".
+                project_table = data.get('project')
+                has_pep621 = isinstance(project_table, dict) and (
+                    'dependencies' in project_table
+                    or 'optional-dependencies' in project_table
+                )
                 if has_poetry:
                     return 'poetry'
                 elif has_pep621:
@@ -116,6 +138,13 @@ class DependencyAnalyzer:
             if re.search(r'^\[tool\.poetry\.dependencies\]', content, re.MULTILINE):
                 return 'poetry'
             elif re.search(r'^\[project\]\s*$', content, re.MULTILINE):
+                return 'pep621'
+            elif re.search(r'^\[project\.optional-dependencies[\].]', content, re.MULTILINE):
+                # Optional-only projects may omit the bare [project] header.
+                # The trailing [].] anchors the table name: `]` is the table
+                # itself, `.` its per-group sub-tables (both read by
+                # _parse_pep621_regex).  Without it, an unrelated table such as
+                # [project.optional-dependencies-extra] would match.
                 return 'pep621'
             else:
                 return 'pyproject_unknown'
@@ -139,7 +168,8 @@ class DependencyAnalyzer:
                 'type': 'unsupported_pyproject_layout',
                 'severity': 'warning',
                 'message': 'pyproject.toml present but no recognized dependency table '
-                           '([tool.poetry.dependencies] or [project.dependencies]) found'
+                           '([tool.poetry.dependencies], [project.dependencies] or '
+                           '[project.optional-dependencies]) found'
             })
 
     def _parse_npm(self):
@@ -479,6 +509,21 @@ class DependencyAnalyzer:
 
         return imports
 
+    def _internal_matches(self, module: str, imp: str) -> List[str]:
+        """Internal modules that *imp* refers to, matched by exact identifier.
+
+        The import's top-level identifier must equal an internal module name.
+        The previous substring test invented edges — ``rapidjson`` "contained"
+        a module named ``api``, ``happy`` contained ``app`` — fabricating
+        cycles and inflating the coupling score.  An identifier matching no
+        internal module is external; it is never guessed at.
+        """
+        key = _import_key(imp)
+        if not key:
+            return []
+        return [m for m in self.internal_modules
+                if m != module and _module_key(m) == key]
+
     def _detect_circular_dependencies(self):
         """Detect circular dependencies between internal modules."""
         # Build dependency graph
@@ -488,9 +533,8 @@ class DependencyAnalyzer:
         for module, imports in self.internal_modules.items():
             for imp in imports:
                 # Check if import is an internal module
-                for internal_module in modules:
-                    if internal_module.lower() in imp.lower() and internal_module != module:
-                        graph[module].add(internal_module)
+                for internal_module in self._internal_matches(module, imp):
+                    graph[module].add(internal_module)
 
         # Find cycles using DFS
         visited = set()
@@ -541,13 +585,10 @@ class DependencyAnalyzer:
         # Count connections between modules
         total_modules = len(self.internal_modules)
         total_connections = 0
-        modules = set(self.internal_modules.keys())
 
         for module, imports in self.internal_modules.items():
             for imp in imports:
-                for internal_module in modules:
-                    if internal_module.lower() in imp.lower() and internal_module != module:
-                        total_connections += 1
+                total_connections += len(self._internal_matches(module, imp))
 
         # Max possible connections (complete graph)
         max_connections = total_modules * (total_modules - 1) if total_modules > 1 else 1
@@ -729,23 +770,41 @@ Supported package managers:
     analyzer = DependencyAnalyzer(project_path, verbose=args.verbose)
     report = analyzer.analyze()
 
+    # A severity-`error` finding means the analysis could not read a manifest,
+    # so every result below it is incomplete.  No --check mode may exit 0 on
+    # one.  Advisory *warnings* are deliberately left alone.
+    errors = [i for i in report.get('issues', [])
+              if i.get('severity') == 'error']
+
+    def print_errors():
+        """Echo recorded errors to stderr (stdout stays valid JSON)."""
+        if not errors:
+            return
+        print(f"Analysis recorded {len(errors)} error(s):", file=sys.stderr)
+        for issue in errors:
+            print(f"  [ERROR] {issue.get('message', issue.get('type', 'unknown error'))}",
+                  file=sys.stderr)
+
     # Filter report based on --check option
     if args.check == 'circular':
         if report['circular_dependencies']:
             print("Circular dependencies found:")
             for cycle in report['circular_dependencies']:
                 print(f"  {' -> '.join(cycle)}")
+            print_errors()
             sys.exit(1)
         else:
             print("No circular dependencies found.")
-            sys.exit(0)
+            print_errors()
+            sys.exit(1 if errors else 0)
     elif args.check == 'coupling':
         score = report['summary']['coupling_score']
         print(f"Coupling score: {score}/100")
-        if score > 70:
+        high_coupling = score > 70
+        if high_coupling:
             print("WARNING: High coupling detected")
-            sys.exit(1)
-        sys.exit(0)
+        print_errors()
+        sys.exit(1 if (high_coupling or errors) else 0)
 
     # Output report
     if args.output == 'json':
@@ -760,6 +819,11 @@ Supported package managers:
         if args.save:
             Path(args.save).write_text(json.dumps(report, indent=2))
             print(f"\nJSON report saved to {args.save}")
+
+    # `--check all` (the default) reports in full, then fails on errors.
+    print_errors()
+    if errors:
+        sys.exit(1)
 
 
 if __name__ == '__main__':

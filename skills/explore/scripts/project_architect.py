@@ -294,6 +294,31 @@ class CodeAnalyzer:
 
         self.metrics['high_import_files'] = high_import_files
 
+    def _record_god_class(self, god_classes: List[Dict], rel_file: str,
+                          class_name: str, class_lines: int):
+        """Record an oversized class in the metrics list *and* the issue list.
+
+        Both detection paths — a class terminated by the next class declaration
+        and the file-final class — funnel through here.  ``--check code`` keys
+        its exit status on issues, so a class recorded only in the metrics would
+        be a silent false negative.
+        """
+        if class_lines <= self.MAX_CLASS_LINES:
+            return
+
+        god_classes.append({
+            'file': rel_file,
+            'class': class_name,
+            'lines': class_lines,
+        })
+        self.issues.append({
+            'type': 'god_class',
+            'severity': 'warning',
+            'file': rel_file,
+            'message': f"Class '{class_name}' has ~{class_lines} lines (threshold: {self.MAX_CLASS_LINES})",
+            'suggestion': "Consider applying Single Responsibility Principle and splitting into smaller classes",
+        })
+
     def _detect_god_classes(self):
         """Detect potential god classes (oversized classes)."""
         extensions = ['.py', '.js', '.ts', '.java']
@@ -311,46 +336,29 @@ class CodeAnalyzer:
                 try:
                     content = file_path.read_text(encoding='utf-8', errors='ignore')
                     lines = content.split('\n')
+                    rel_file = str(file_path.relative_to(self.project_path))
 
                     # Simple class detection
                     class_pattern = r'^\s*(?:export\s+)?(?:abstract\s+)?class\s+(\w+)'
                     in_class = False
                     class_name = None
                     class_start = 0
-                    brace_count = 0
 
                     for i, line in enumerate(lines):
                         match = re.match(class_pattern, line)
                         if match:
                             if in_class and class_name:
                                 # End previous class
-                                class_lines = i - class_start
-                                if class_lines > self.MAX_CLASS_LINES:
-                                    god_classes.append({
-                                        'file': str(file_path.relative_to(self.project_path)),
-                                        'class': class_name,
-                                        'lines': class_lines,
-                                    })
+                                self._record_god_class(god_classes, rel_file,
+                                                       class_name, i - class_start)
                             class_name = match.group(1)
                             class_start = i
                             in_class = True
 
                     # Check last class
                     if in_class and class_name:
-                        class_lines = len(lines) - class_start
-                        if class_lines > self.MAX_CLASS_LINES:
-                            god_classes.append({
-                                'file': str(file_path.relative_to(self.project_path)),
-                                'class': class_name,
-                                'lines': class_lines,
-                            })
-                            self.issues.append({
-                                'type': 'god_class',
-                                'severity': 'warning',
-                                'file': str(file_path.relative_to(self.project_path)),
-                                'message': f"Class '{class_name}' has ~{class_lines} lines (threshold: {self.MAX_CLASS_LINES})",
-                                'suggestion': "Consider applying Single Responsibility Principle and splitting into smaller classes",
-                            })
+                        self._record_god_class(god_classes, rel_file,
+                                               class_name, len(lines) - class_start)
 
                 except Exception:
                     pass

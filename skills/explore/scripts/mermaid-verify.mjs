@@ -9,33 +9,53 @@
  * `&lt;`) terminates the statement.
  *   Ref: https://mermaid.js.org/syntax/sequenceDiagram.html#entity-codes-to-escape-characters
  *
+ * A ```mermaid fence left unclosed at end of file is reported as a failure
+ * rather than silently dropped — otherwise the gate passes a file whose
+ * diagram was never checked.
+ *
  * Usage:
  *   npm i mermaid@11 jsdom@24  # one-time, in this folder
  *   node mermaid-verify.mjs path/to/file.md [more.md ...]
  *
  * Exit code is non-zero if any block fails, so it can gate CI or a pre-commit hook.
+ *
+ * `scanMermaidBlocks` is exported and depends on nothing but the text it is
+ * given, so fence extraction is testable without installing mermaid/jsdom.
  */
 // Mermaid verifier — parse + actual render (loose & strict) + a lint pass for the
 // documented gotchas that parse() accepts but renderers reject.
 // Refs: https://mermaid.js.org/syntax/sequenceDiagram.html#entity-codes-to-escape-characters
-import { JSDOM } from 'jsdom';
 import fs from 'fs';
+import { pathToFileURL } from 'url';
 
-const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
-globalThis.window = dom.window;
-globalThis.document = dom.window.document;
-// expose constructors mermaid's renderer reaches for on the global scope
-for (const k of ['CSSStyleSheet','Element','SVGElement','Node','DOMParser','XMLSerializer','NodeList','HTMLElement','MutationObserver','CSSStyleDeclaration','getComputedStyle']) {
-  if (dom.window[k] && !globalThis[k]) globalThis[k] = dom.window[k];
+// ---- mermaid runtime ---------------------------------------------------------
+// Loaded lazily: extraction, and the unclosed-fence failure it reports, must
+// work in a checkout where the opt-in `npm i mermaid jsdom` never happened.
+let mermaidPromise = null;
+
+async function initMermaid() {
+  const { JSDOM } = await import('jsdom');
+  const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  // expose constructors mermaid's renderer reaches for on the global scope
+  for (const k of ['CSSStyleSheet','Element','SVGElement','Node','DOMParser','XMLSerializer','NodeList','HTMLElement','MutationObserver','CSSStyleDeclaration','getComputedStyle']) {
+    if (dom.window[k] && !globalThis[k]) globalThis[k] = dom.window[k];
+  }
+  // jsdom has no layout engine; stub the SVG measurement APIs so render() can complete.
+  const P = dom.window.SVGElement.prototype;
+  P.getBBox = function () { return { x: 0, y: 0, width: 80, height: 16 }; };
+  P.getComputedTextLength = function () { return 80; };
+  P.getPointAtLength = function () { return { x: 0, y: 0 }; };
+  P.getTotalLength = function () { return 80; };
+
+  return (await import('mermaid')).default;
 }
-// jsdom has no layout engine; stub the SVG measurement APIs so render() can complete.
-const P = dom.window.SVGElement.prototype;
-P.getBBox = function () { return { x: 0, y: 0, width: 80, height: 16 }; };
-P.getComputedTextLength = function () { return 80; };
-P.getPointAtLength = function () { return { x: 0, y: 0 }; };
-P.getTotalLength = function () { return 80; };
 
-const mermaid = (await import('mermaid')).default;
+function loadMermaid() {
+  if (!mermaidPromise) mermaidPromise = initMermaid();
+  return mermaidPromise;
+}
 
 // ---- lint pass (the part parse() misses) -------------------------------------
 // Apply to the *text* portions of a diagram: message text (after the first ':' on
@@ -71,40 +91,100 @@ function lintSequence(code) {
   return issues;
 }
 
-function extract(file) {
-  const txt = fs.readFileSync(file, 'utf8'), out = [],
-    re = /^[ \t]*```mermaid(?:[ \t][^\r\n]*)?\r?\n([\s\S]*?)^[ \t]*```/gm;
-  let m, i = 0;
-  while ((m = re.exec(txt))) out.push({ file, idx: ++i, code: m[1].trimEnd() });
-  return out;
+// ---- fence extraction --------------------------------------------------------
+// A line scanner, not a regex.  The old pattern
+//   /^[ \t]*```mermaid(?:[ \t][^\r\n]*)?\r?\n([\s\S]*?)^[ \t]*```/gm
+// closed a block at the first line merely *starting* with ``` (so a content
+// line like ```not-a-close truncated the diagram) and, because it required a
+// closing fence to match at all, dropped an unclosed final block entirely —
+// leaving the gate green on a file whose diagram was never checked.
+
+// Opening fence: ```mermaid, optionally indented, optionally carrying an info
+// string after a space/tab (```mermaid {init: ...}).
+const OPEN_RE = /^[ \t]*```mermaid(?:[ \t].*)?$/;
+// Closing fence: a line of nothing but backticks, indentation and trailing
+// whitespace.  A line such as ```not-a-close is content, not a close.
+const CLOSE_RE = /^[ \t]*`{3,}[ \t]*$/;
+
+export function scanMermaidBlocks(text, file = '<text>') {
+  const lines = text.split(/\r?\n/); // normalizes CRLF for the whole block
+  const blocks = [];
+  let open = null;
+  let idx = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (open === null) {
+      if (OPEN_RE.test(line)) open = { startLine: i + 1, body: [] };
+      continue;
+    }
+    if (CLOSE_RE.test(line)) {
+      blocks.push({ file, idx: ++idx, startLine: open.startLine, code: open.body.join('\n').trimEnd(), unclosed: false });
+      open = null;
+      continue;
+    }
+    open.body.push(line);
+  }
+
+  if (open !== null) {
+    blocks.push({ file, idx: ++idx, startLine: open.startLine, code: open.body.join('\n').trimEnd(), unclosed: true });
+  }
+
+  return blocks;
+}
+
+export function extract(file) {
+  return scanMermaidBlocks(fs.readFileSync(file, 'utf8'), file);
 }
 
 async function check(level, code, id) {
+  const mermaid = await loadMermaid();
   mermaid.initialize({ startOnLoad: false, securityLevel: level });
   try { await mermaid.parse(code); } catch (e) { return `parse(${level}) FAILED: ${String(e.message).split('\n')[0]}`; }
   try { await mermaid.render(id + '_' + level, code); } catch (e) { return `render(${level}) FAILED: ${String(e.message).split('\n')[0].slice(0,140)}`; }
   return null;
 }
 
-const files = process.argv.slice(2);
-let blocks = [];
-for (const f of files) blocks = blocks.concat(extract(f));
+async function main() {
+  const files = process.argv.slice(2);
+  let blocks = [];
+  for (const f of files) blocks = blocks.concat(extract(f));
 
-if (blocks.length === 0) {
-  console.log('no mermaid blocks found');
-  process.exit(2);
+  if (blocks.length === 0) {
+    console.log('no mermaid blocks found');
+    process.exit(2);
+  }
+
+  let bad = 0;
+  for (const b of blocks) {
+    if (b.unclosed) {
+      bad++;
+      console.log(`FAIL  ${b.file} #${b.idx} (unclosed)`);
+      console.log(`  unclosed \`\`\`mermaid fence opened at line ${b.startLine} — no closing fence before end of file`);
+      continue;
+    }
+    const type = b.code.split('\n')[0].trim();
+    const id = 'd' + b.idx;
+    const probs = [];
+    for (const lv of ['loose', 'strict']) { const r = await check(lv, b.code, id); if (r) probs.push('  ' + r); }
+    if (/sequenceDiagram/.test(type)) probs.push(...lintSequence(b.code).map(s => '  lint: ' + s));
+    if (probs.length) { bad++; console.log(`FAIL  ${b.file} #${b.idx} (${type})`); probs.forEach(p => console.log(p)); }
+    else console.log(`PASS  ${b.file} #${b.idx} (${type})`);
+  }
+  console.log(`\n${blocks.length - bad}/${blocks.length} clean`);
+
+  process.exit(bad ? 1 : 0);
 }
 
-let bad = 0;
-for (const b of blocks) {
-  const type = b.code.split('\n')[0].trim();
-  const id = 'd' + b.idx;
-  const probs = [];
-  for (const lv of ['loose', 'strict']) { const r = await check(lv, b.code, id); if (r) probs.push('  ' + r); }
-  if (/sequenceDiagram/.test(type)) probs.push(...lintSequence(b.code).map(s => '  lint: ' + s));
-  if (probs.length) { bad++; console.log(`FAIL  ${b.file} #${b.idx} (${type})`); probs.forEach(p => console.log(p)); }
-  else console.log(`PASS  ${b.file} #${b.idx} (${type})`);
+// Run as a CLI only when invoked directly, so the scanner can be imported.
+function invokedDirectly() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(fs.realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
 }
-console.log(`\n${blocks.length - bad}/${blocks.length} clean`);
 
-process.exit(bad ? 1 : 0);
+if (invokedDirectly()) await main();

@@ -36,9 +36,26 @@ class ProjectScanner:
         'infrastructure': ['config', 'util', 'helper', 'middleware', 'plugin'],
     }
 
-    # File patterns for different technologies
+    IGNORE_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv',
+                   'dist', 'build', '.next', '.nuxt', 'coverage', '.pytest_cache'}
+
+    # Technologies identified by a source-file *extension*.  Matched against
+    # ``Path.suffix`` exactly: react used to list the bare pattern ``jsx``,
+    # which the ``*{pattern}*`` glob below matched against any file name
+    # merely containing those letters.
+    TECH_EXTENSIONS = {
+        'react': ('.jsx', '.tsx'),
+    }
+
+    # Technologies identified by a package-manifest dependency.
+    TECH_DEPENDENCIES = {
+        'react': {'react', 'react-dom', 'react-native'},
+    }
+
+    # File patterns for different technologies, matched against file names.
+    # ``package.json`` is a *node* signature only — listing it under react
+    # made every Node project a React project.
     TECH_PATTERNS = {
-        'react': ['jsx', 'tsx', 'package.json'],
         'vue': ['vue', 'nuxt.config'],
         'angular': ['component.ts', 'module.ts', 'angular.json'],
         'node': ['package.json', 'express', 'fastify'],
@@ -57,6 +74,12 @@ class ProjectScanner:
         self.layers: Dict[str, List[str]] = defaultdict(list)
         self.technologies: Set[str] = set()
         self.external_deps: Set[str] = set()
+        # component name -> normalized top-level names its files import.
+        # Kept beside the raw ``imports`` list (which stays verbatim in the
+        # JSON output) because resolving a relative import needs the path of
+        # the file it appeared in.
+        self._import_targets: Dict[str, Set[str]] = defaultdict(set)
+        self._package_deps: Set[str] = set()
 
     def scan(self) -> Dict:
         """Scan the project and return structure information."""
@@ -75,8 +98,7 @@ class ProjectScanner:
 
     def _scan_directories(self):
         """Scan directory structure for components."""
-        ignore_dirs = {'.git', 'node_modules', '__pycache__', '.venv', 'venv',
-                       'dist', 'build', '.next', '.nuxt', 'coverage', '.pytest_cache'}
+        ignore_dirs = self.IGNORE_DIRS
 
         for item in self.project_path.iterdir():
             if item.is_dir() and item.name not in ignore_dirs and not item.name.startswith('.'):
@@ -101,7 +123,12 @@ class ProjectScanner:
         # Count imports/dependencies within the directory
         imports = set()
         for f in code_files[:50]:  # Limit to avoid large projects
-            imports.update(self._extract_imports(f))
+            file_imports = self._extract_imports(f)
+            imports.update(file_imports)
+            for imp in file_imports:
+                target = self._import_target_key(imp, f)
+                if target:
+                    self._import_targets[dir_path.name].add(target)
 
         return {
             'path': str(dir_path.relative_to(self.project_path)),
@@ -133,6 +160,35 @@ class ProjectScanner:
 
         return imports
 
+    def _import_target_key(self, imp: str, source_file: Path) -> Optional[str]:
+        """Normalized top-level name an import refers to, or ``None``.
+
+        Relative specifiers are resolved *lexically* against the importing file
+        and mapped back to the top-level directory they land in; one that
+        escapes the project root is external.  Everything else reduces to its
+        first path segment (and, for dotted module paths, the part before the
+        first dot).  Callers compare the result against component names
+        **exactly** — a miss means "external", never a guess.  The previous
+        substring test let ``rapidjson`` match a component named ``api`` and
+        ``happy`` match ``app``, fabricating edges.
+        """
+        spec = imp.strip().replace('\\', '/')
+        if not spec:
+            return None
+
+        if spec.startswith('.'):
+            resolved = os.path.normpath(os.path.join(str(source_file.parent), spec))
+            try:
+                rel = Path(resolved).relative_to(self.project_path)
+            except ValueError:
+                return None  # climbs out of the project -> external
+            return rel.parts[0].lower() if rel.parts else None
+
+        if spec.startswith('@/') or spec.startswith('~/'):
+            spec = spec[2:]
+
+        return spec.split('/')[0].split('.')[0].strip().lower() or None
+
     def _guess_component_type(self, name: str) -> str:
         """Guess component type from directory name."""
         name_lower = name.lower()
@@ -151,10 +207,43 @@ class ProjectScanner:
                     self.technologies.add(tech)
                     break
 
+        self._detect_technologies_by_extension()
+
         # Detect external dependencies from package files
         self._parse_package_json()
         self._parse_requirements_txt()
         self._parse_go_mod()
+
+        self._detect_technologies_by_dependency()
+
+    def _detect_technologies_by_extension(self):
+        """Mark technologies whose signature is a source-file extension.
+
+        The extension must match ``Path.suffix`` exactly, and vendored trees
+        are skipped — otherwise a single ``.tsx`` shipped inside
+        ``node_modules`` would relabel the whole project.
+        """
+        for tech, extensions in self.TECH_EXTENSIONS.items():
+            for ext in extensions:
+                for path in self.project_path.rglob(f'*{ext}'):
+                    if path.suffix != ext or not path.is_file():
+                        continue
+                    try:
+                        rel_parts = path.relative_to(self.project_path).parts
+                    except ValueError:
+                        continue
+                    if any(part in self.IGNORE_DIRS for part in rel_parts):
+                        continue
+                    self.technologies.add(tech)
+                    break
+                if tech in self.technologies:
+                    break
+
+    def _detect_technologies_by_dependency(self):
+        """Mark technologies declared as a dependency in package.json."""
+        for tech, names in self.TECH_DEPENDENCIES.items():
+            if self._package_deps & names:
+                self.technologies.add(tech)
 
     def _parse_package_json(self):
         """Parse package.json for dependencies."""
@@ -162,6 +251,10 @@ class ProjectScanner:
         if pkg_path.exists():
             try:
                 data = json.loads(pkg_path.read_text())
+                for key in ('dependencies', 'devDependencies', 'peerDependencies'):
+                    section = data.get(key)
+                    if isinstance(section, dict):
+                        self._package_deps.update(section.keys())
                 deps = list(data.get('dependencies', {}).keys())[:10]
                 self.external_deps.update(deps)
             except Exception:
@@ -190,14 +283,20 @@ class ProjectScanner:
                 pass
 
     def _detect_relationships(self):
-        """Detect relationships between components."""
-        component_names = set(self.components.keys())
+        """Detect relationships between components.
 
-        for comp_name, comp_info in self.components.items():
-            for imp in comp_info.get('imports', []):
-                # Check if import references another component
-                for other_comp in component_names:
-                    if other_comp != comp_name and other_comp.lower() in imp.lower():
+        An import creates an edge only when its normalized top-level name
+        equals a component name.  Targets are walked in sorted order so the
+        edge list does not depend on set iteration order.
+        """
+        components_by_key: Dict[str, List[str]] = defaultdict(list)
+        for name in self.components:
+            components_by_key[name.strip().lower()].append(name)
+
+        for comp_name in self.components:
+            for target in sorted(self._import_targets.get(comp_name, ())):
+                for other_comp in components_by_key.get(target, ()):
+                    if other_comp != comp_name:
                         self.relationships.append((comp_name, other_comp, 'uses'))
 
     def _classify_layers(self):
