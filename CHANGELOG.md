@@ -4,6 +4,25 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.16.3] — 2026-07-27
+
+### Fixed
+- **Setup wizard renders actually reach the user** (`references/setup.md`)
+  — six live dry runs settled a harness constraint: response text
+  written in the same turn as a tool call may never display, so a
+  structured selector called after a render always loses the render
+  (proven four times, including a controlled attempt). The
+  render-before-ask rule now splits every render-dependent question
+  across the turn boundary: the response ends with the render (detection
+  table, model tree, C/I/T table, full-roster summary) plus a
+  standardized invite — *reply directly, or reply anything (e.g. "ask")
+  to open the selectors* — a reply carrying the answer is the fast path,
+  any other reply opens the structured selector as the next turn's first
+  action, directly under the render. Self-contained questions (billing,
+  consent) keep the structured tool; previews supplement renders, never
+  substitute. Step 6 renders the complete setup in the response window
+  before the save/redo/discard decision.
+
 ## [2.16.2] — 2026-07-27
 
 ### Fixed
