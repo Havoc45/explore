@@ -1,6 +1,6 @@
 ---
 description: "Explore, understand, and improve a codebase (read-only). Charts a system design reference by default; flags add audit/plan, execution, security, and budget-aware modes."
-argument-hint: "[--depth=standard|quick|deep] [--focus=area] [--improve] [--security] [--plan-once \"desc\"] [--review=file] [--execute-level=auto|low|medium|high|max plan] [--reconcile] [--init] [--plan-list|--ls] [--issues] [--sub-continuous] [--reference=path] [--code-mode=no] [--branch=name] [--bypass-pr-create=yes] [--verbosity=low|medium|high] [--caveman=ultra] [--model=...]"
+argument-hint: "[--depth=standard|quick|deep] [--focus=area] [--improve] [--security] [--plan-once \"desc\"] [--review=file] [--execute-level=auto|low|medium|high|max plan] [--reconcile] [--init] [--plan-list|--ls] [--setup-plugin] [--issues] [--sub-continuous] [--reference=path] [--code-mode=no] [--branch=name] [--bypass-pr-create=yes] [--verbosity=low|medium|high] [--caveman=ultra] [--model=...]"
 ---
 
 Read and follow the `explore` skill at `${CLAUDE_PLUGIN_ROOT}/skills/explore/SKILL.md`, then run it on this codebase.

@@ -2,7 +2,7 @@
 
 A Claude Code plugin (and Agent Skill) that explores, understands, and **improves** a codebase as a senior architect-advisor — strictly **read-only** on source, evidence-driven, and driven by **feature flags**.
 
-By default it charts how a system is actually built into a durable system design reference. Flags extend it across the whole advisor lifecycle — audit and plan, plan a single task, security review, dispatch an executor and review its work, refresh against HEAD — and tune any run with depth, verbosity, token-compressed subagent communication, and per-plan model assignment. It never touches your source; every write lands in a path it owns — `docs/system-design-reference/`, `plans/`, or (with `--init`) the root agent-context files — or, on a [Knoxville](https://github.com/Havoc45/Knoxville)-linked repo, the linked docs vault; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration).
+By default it charts how a system is actually built into a durable system design reference. Flags extend it across the whole advisor lifecycle — audit and plan, plan a single task, security review, dispatch an executor and review its work, refresh against HEAD — and tune any run with depth, verbosity, token-compressed subagent communication, and per-plan model assignment. It never touches your source; every write lands in a path it owns — `docs/system-design-reference/`, `plans/`, (with `--init`) the root agent-context files, or, after `--setup-plugin`, its global config home `${XDG_CONFIG_HOME:-$HOME/.config}/explore/` (`~/.config/explore/` by default) — or, on a [Knoxville](https://github.com/Havoc45/Knoxville)-linked repo, the linked docs vault; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration).
 
 ```
 explore                          → docs/system-design-reference/   (map: diagrams, ADRs, risk map)
@@ -36,6 +36,7 @@ All four are MIT-licensed; full attribution is in [`NOTICE`](./NOTICE). If you f
 | `--reconcile` | Refresh the reference and verify/relink plans against `HEAD` |
 | `--init` | Write a lean, curated `AGENTS.md` agent-context primer at the repo root + symlink `CLAUDE.md` to it (so any tool's next session knows the commands, landmines, and where the map is), or route it to the linked docs vault in a Knoxville-linked repo; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration) |
 | `--plan-list` / `--ls` | Print a compact status table of all plans (number, description, severity, priority, status) — cached-first, reads only the plan index, never full bodies |
+| `--setup-plugin` | Interactive first-run setup: detect harness + lanes, choose lanes and billing, pick the model roster, set or calibrate C/I/T weights, persist to the global config home |
 
 **Modifier flags** (how the run behaves — combine freely):
 
@@ -67,7 +68,8 @@ Explore the repo in budget-aware resumable mode with subagents talking in cavema
 - **`plans/`** — handoff plans written for the weakest plausible executor: inlined context, ordered steps with verification gates, hard scope boundaries, machine-checkable done criteria, STOP conditions. Each cites the ADR it descends from. A compressed **`plans/agents/README.md`** digest mirrors the backlog for orchestrator triage (the full plans stay authoritative).
 - **`docs/explore-head-docs/`** — only in `--sub-continuous`: the continuation checkpoints (no `agents/` mirror — already agent-native).
 - **`AGENTS.md` + `CLAUDE.md`** (repo root) — only in `--init`: a lean, model-agnostic agent-context primer (`AGENTS.md`, the cross-tool standard) with `CLAUDE.md` symlinked to it for Claude Code. Curated and short by design — it points agents at the `agents/` mirrors above, not a copy of the map. With `--caveman`, written compressed (it loads every session).
-- **Linked Knoxville docs vault** — on a Knoxville-linked repo, all outputs above are routed to the linked docs vault; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration).
+- **`${XDG_CONFIG_HOME:-$HOME/.config}/explore/`** (`~/.config/explore/` by default) — only in `--setup-plugin`: `roster.json` (your lanes, models, and C/I/T weights) plus `calibration/` transcripts. Machine-global user config, deliberately outside the plugin directory so it survives updates and is shared across harnesses — never written into a repo, never routed to a docs vault.
+- **Linked Knoxville docs vault** — on a Knoxville-linked repo, all documentation outputs above are routed to the linked docs vault; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration).
 
 ## Install
 
@@ -143,6 +145,16 @@ claude mcp add --scope user opencode -- node <explore-repo>/skills/explore/scrip
 
 The vendored `opencode-mcp.mjs` wrapper (zero-dep Node) auto-starts `opencode serve` and exposes six tools (`opencode_run` / `fire` / `status` / `wait` / `steer` / `abort`). Without any registration, the skill falls back to `codex exec --json` / `opencode run --format json` shell runs — same roster, same confinement rules. Mechanics: `skills/explore/references/delegation.md`.
 
+## First-run setup
+
+```
+explore --setup-plugin
+```
+
+An interactive wizard, harness-agnostic. It detects your harness and the CLIs installed beside it, then asks: **mode** (native-only or multi-lane) → **lanes + billing** (subscription or pay-per-token, per lane) → **models** per lane → **Cost/Intelligence/Taste weights**, either from the shipped defaults, typed in by hand, or calibrated against your real models with your explicit consent.
+
+Answers persist to `${XDG_CONFIG_HOME:-$HOME/.config}/explore/roster.json` (`~/.config/explore/` by default) — outside the plugin directory, so it survives plugin updates, is shared by every harness on the machine, and is never routed to a docs vault. Skipping setup costs nothing: the shipped roster in `skills/explore/references/delegation.md` stays the zero-config fallback.
+
 ## How it works
 
 1. **Recon & truth-grounding** (Hard Rule 7) — scope the architecture and stack, then pull *every* source of truth: docs, ADRs, specs, configs, IaC, git signal, and available tool calls / MCP connectors. Establish what's actually there before judging.
@@ -153,7 +165,7 @@ The vendored `opencode-mcp.mjs` wrapper (zero-dep Node) auto-starts `opencode se
 
 ## Hard rules
 
-- Never modifies source code. Writes only to the paths it owns: `docs/system-design-reference/`, `plans/` at the repo root, `docs/explore-head-docs/` (`--sub-continuous`), and the root `AGENTS.md` + `CLAUDE.md` (`--init`), or their routed destinations in the linked docs vault for a Knoxville-linked repo; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration).
+- Never modifies source code. Writes only to the paths it owns: `docs/system-design-reference/`, `plans/` at the repo root, `docs/explore-head-docs/` (`--sub-continuous`), and the root `AGENTS.md` + `CLAUDE.md` (`--init`), or their routed destinations in the linked docs vault for a Knoxville-linked repo; see the [Knoxville handoff](skills/explore/references/init.md#knoxville-handoff--docs-vault-integration). Plus, with `--setup-plugin` only, its own global config home `${XDG_CONFIG_HOME:-$HOME/.config}/explore/` — machine-global user config, never written into a repo and never vault-routed.
 - Never runs commands that mutate the working tree — read-only analysis only (scoped exceptions: the executor's disposable worktree, and `--issues`).
 - Scope the architecture/stack and pull all available truth before judging (Rule 7).
 - Every claim and finding carries `file:line` evidence; recommendations are labelled options, never edits.

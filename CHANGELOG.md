@@ -4,6 +4,43 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **`--setup-plugin` — harness-agnostic first-run setup** (`SKILL.md`,
+  `references/setup.md`, `references/roster-calibration.md`,
+  `references/delegation.md`, `commands/explore.md`, `README.md`) — an
+  interactive wizard that detects the host harness and the CLI lanes
+  installed beside it, then asks for the mode (native-only or
+  multi-lane), the enabled lanes and each one's billing
+  (subscription/included quota vs API pay-per-token, host lane
+  included), the eligible models per lane recorded by *dispatchable id*,
+  and each model's Cost/Intelligence/Taste weights. It runs standalone
+  and bypasses the phased workflow entirely. Two new references carry
+  it: `references/setup.md` holds the wizard and the persistence
+  contract, and `references/roster-calibration.md` holds the optional,
+  consent-gated calibration path that probes a user's real models to
+  *suggest* those weights — the user still confirms every value.
+  Answers persist as a schema-v1 `roster.json` under
+  `${XDG_CONFIG_HOME:-$HOME/.config}/explore/` — deliberately outside
+  the version-suffixed plugin install directories, so the roster
+  survives plugin updates and one file serves every harness on the
+  machine; it is machine-global user config and is never written into a
+  repo or routed to a Knoxville vault. **Hard Rule 1** is amended to
+  sanction that config home (it adds a path; nothing is relaxed), and
+  `delegation.md` gains a **user roster override**: a schema-valid
+  roster is authoritative over the shipped roster table for staffing —
+  its lanes are the enabled lanes and its models the eligible models,
+  with the shipped table remaining the zero-config fallback and an
+  invalid file treated as absent for the run. That paragraph also
+  records the honest boundary: the pre-built lane wrapper agents still
+  name their shipped default models internally, so a roster naming
+  other models dispatches them through the transports directly until a
+  follow-up plan wires the wrappers to the roster. (`usage_probe.py` is
+  unaffected — its probe model is a fixed quota-header read,
+  roster-independent by design; its limitation is lane coverage,
+  claude + codex today.)
+
 ## [2.15.4] — 2026-07-18
 
 ### Added
