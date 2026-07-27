@@ -4,6 +4,29 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.16.4] — 2026-07-27
+
+### Changed
+- **Transport verification matrix re-run on current CLIs**
+  (`references/delegation.md`, `README.md`) — every codex shell shape is
+  now verified on codex-cli 0.145.0: the linked-worktree commit failure
+  reproduces verbatim without the extra roots, the narrow `--add-dir`
+  writable-roots set commits cleanly, `exec resume` from inside the
+  worktree with restated `sandbox_mode` + `writable_roots` commits a
+  second round with the main tree untouched, and the stdin hang is
+  re-confirmed live (a held-open pipe blocks indefinitely; an EOF pipe
+  proceeds — the `</dev/null` closure stays mandatory). The opencode
+  lane is re-verified on serve 1.18.6 after a live lift (stale 1.18.3
+  killed, wrapper v1.4.0 self-healed onto the new binary): sync and
+  async dispatch are clean, and the `/session/status` mid-generation
+  `{}` regression persists on 1.18.6, so the wrapper ≥ 1.3.0 requirement
+  stands (section retitled "1.18.3+"). One honest residue is recorded:
+  the codex MCP-transport executor shape stays pinned at 0.144.5
+  because a registered `codex mcp-server` keeps its at-spawn binary —
+  re-pin after an MCP reconnect. The README's Minion platforms section
+  now names the current pins and points at `delegation.md` as the
+  per-shape verification record.
+
 ## [2.16.3] — 2026-07-27
 
 ### Fixed
