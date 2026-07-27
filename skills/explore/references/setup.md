@@ -15,6 +15,7 @@ Rules that hold on both paths:
 
 - **One decision per question.** A question that bundles two decisions gets split into two.
 - **Overflow rule.** When a choice has more options than the tool can hold (more than 4 supplied options on Claude Code — the UI's own "Other" is added on top and never consumes a slot), either split it into consecutive questions with "more choices…" as the last option, or drop that one question to a plain-text numbered list. **Never silently truncate the option set** — the user must be able to reach every option.
+- **Single-candidate rule** (the overflow rule's mirror). Structured question tools can require **at least 2 supplied options** (AskUserQuestion rejects a 1-option question outright — live-hit 2026-07-27). A choice with exactly one known-good candidate still gets a selector: pair the candidate with the second option **"choose a different id from the inventory shown above"** (free-text entry) — a real alternative action, never a padded or invented model id. Only when there is no inventory to choose from either is the choice stated as the taken path in the response and confirmed at the summary (Step 6).
 - **Consent and cost are plain full sentences** (auto-clarity), on every harness, even where the surrounding prose is terse.
 
 ## Wizard Step 1 — Detect
@@ -72,6 +73,8 @@ Take the inventory for each enabled lane with **verified commands only**:
 | codex | **no inventory subcommand** (verified on codex-cli 0.145.0) — read the `model` key from `~/.codex/config.toml` for the lane's configured default, and offer it alongside the known-good codex-lane ids in the shipped roster | never invent model ids |
 | opencode | `opencode models` — hundreds of ids (346 on opencode 1.18.6). **No verified command reads opencode's configured default; do not claim one.** | the long-list case below |
 | any other / unknown | ask the user to paste their model list | — |
+
+**Every lane renders its found inventory before its question** — not only the long-list case. The user must *see* what the probes found per lane in the response trail, and every lane gets a selector, even when only one candidate is known: the native lane renders its alias list; codex renders the `model` key just read from `~/.codex/config.toml` plus the shipped-roster codex ids (its known-good set — there is no inventory subcommand to list more); opencode renders per the long-list rule below. A lane whose known-good set has one entry takes the single-candidate rule ("Question mechanics") — candidate + "choose a different id from the inventory shown above" — so the selector never silently collapses into a statement.
 
 **The long-list rule** — a generic mechanism; opencode is today's instance. When an inventory exceeds ~8 entries:
 
