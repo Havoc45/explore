@@ -1,5 +1,7 @@
 # HANDOVER — `explore` skill/plugin
 
+> **Frozen snapshot — written at v2.11.0 (2026-07-08).** Operational truth lives in `skills/explore/SKILL.md`, its `references/`, and `CHANGELOG.md`; the sections below are historical.
+
 > **Compression:** caveman-ultra (per `explore --caveman=ultra`). Articles/filler dropped, fragments, `→` = leads-to/causal, abbrevs (repo, config, impl, deps, dir, docs, pkg, ref). **Verbatim** (payload, never compressed): file paths, versions, flag names, commands, technical terms, error strings. Headers + structure kept clear (auto-clarity — a handover must not be misread).
 
 ## What this is
@@ -29,7 +31,7 @@ explore/
 │   │   ├── delegation.md          (2.7.0 org chart mechanics, spiral detection, escalation ladder, steering; 2.8.0 model roster & routing — provider-CLI lanes; 2.9.0 dispatch transports MCP+shell, minion platforms/nesting; 2.10.0 model labeling, codex quirks, computer-use lane, gpt-5.5 workflow wrapper, big-queue parallelism; 2.11.0 critical-path queue sequencing; 2.12.0 gpt-5.6-sol roster re-weights — CLI lanes clear taste bar)
 │   │   ├── caveman.md · init.md   (init.md 2.10.0: Knoxville docs-vault handoff — detect → docs_init → vault-redirect primer; 2.12.0: full-output routing table + parity/sync completion criterion)
 │   │   └── sub-continuous.md      (+ throttle ladder & credits guard; 2.11.0 usage-cmd table, hard 90% line, refresh loop scheduled resume)
-│   └── scripts/  (3 vendored py analyzers + mermaid-verify.mjs + opencode-mcp.mjs — NEW 2.9.0 zero-dep stdio MCP wrapper over `opencode serve`, 6 tools)
+│   └── scripts/  (3 vendored py analyzers + mermaid-verify.mjs + opencode-mcp.mjs — NEW 2.9.0 zero-dep stdio MCP wrapper over `opencode serve`, 7 tools)
 ├── README.md (per-harness install docs) · LICENSE · NOTICE (4 sections now) · CHANGELOG.md
 ```
 

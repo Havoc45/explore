@@ -1,6 +1,6 @@
 # First-run setup (`--setup-plugin`) — the wizard
 
-`--setup-plugin` runs an interactive **wizard** that produces one artifact: a persisted **roster** — the host harness, the enabled dispatch lanes and their billing, the eligible models, and each model's Cost/Intelligence/Taste weights — written to a global config home outside every harness's plugin directory. Every later run loads that roster and treats it as **authoritative when it exists and validates**; the shipped defaults in `references/delegation.md` "The roster" apply only when no valid roster file exists.
+`--setup-plugin` runs an interactive **wizard** that produces one artifact: a persisted **roster** — the host harness, the enabled dispatch lanes and their billing, the eligible models, and each model's Cost/Intelligence/Taste weights — written to a global config home outside every harness's plugin directory. Every later run loads that roster and treats it as **authoritative when it exists and validates**; the shipped defaults in `references/delegation.md` "The roster" apply when no valid roster file exists **or when a valid roster leaves no locally usable lane** ("Cross-harness loading" below).
 
 **When it runs.** Only when the user passes `--setup-plugin`. It is a **standalone action** that **bypasses the phased workflow entirely** — no recon, no exploration, no vetting, no documentation or plan output; only the wizard runs. When `--setup-plugin` arrives alongside other action flags, run setup only, then end the run, telling the user in one line to re-invoke the other flags.
 
@@ -142,7 +142,7 @@ Render the whole setup as response text: host, mode, lanes with billing, the ros
 
 **Cross-harness loading.** `host` records which harness ran the wizard; the file serves every harness. A harness loading a roster it did not write resolves lanes by id per the rule above. If that leaves **no usable lane** — e.g. a native-only roster written on a different harness, whose id matches nothing local — fall back to the shipped defaults for the run, say so in one line, and suggest re-running `--setup-plugin` here.
 
-**A saved, schema-valid roster is authoritative.** It defines the enabled lanes and the eligible models; deliberately unselected lanes and models do not creep back in. The shipped `delegation.md` table applies only when no valid roster file exists. A file that exists but **fails validation** — unparseable, wrong types, or an unknown `schema` at or below the current version — is **treated as absent for the run**: note it in one line and suggest `--setup-plugin`, which offers the backup-and-redo below.
+**A saved, schema-valid roster is authoritative.** It defines the enabled lanes and the eligible models; deliberately unselected lanes and models do not creep back in. The shipped `delegation.md` table applies when no valid roster file exists **or when a valid roster leaves no locally usable lane** ("Cross-harness loading" above). A file that exists but **fails validation** — unparseable, wrong types, or an unknown `schema` at or below the current version — is **treated as absent for the run**: note it in one line and suggest `--setup-plugin`, which offers the backup-and-redo below.
 
 **Write safety.**
 

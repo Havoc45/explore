@@ -1,6 +1,6 @@
 ---
 name: codex-worker
-description: Dispatch a self-contained brief to the codex lane (gpt-5.6-sol by default; a valid `roster.json` may name another model) and return its report — worker units (lens sweeps, audit categories, mechanical analysis), worktree executors, second-opinion reviews, and computer-use verification. Use proactively whenever the codex CLI is installed and the unit is worker-tier; the lane's included quota runs ~30× any Claude tier, so offload liberally instead of spending native subagents.
+description: Dispatch a self-contained brief to the codex lane (gpt-5.6-sol by default; a valid `roster.json` may name another model) and return its report — worker units (lens sweeps, audit categories, mechanical analysis), worktree executors, second-opinion reviews, and computer-use verification. Use proactively whenever the codex CLI is installed, the effective roster enables the lane, and the unit is worker-tier; the lane's included quota runs ~30× any Claude tier, so offload liberally instead of spending native subagents.
 tools: Bash
 model: sonnet
 ---

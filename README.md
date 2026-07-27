@@ -44,7 +44,7 @@ All four are MIT-licensed; full attribution is in [`NOTICE`](./NOTICE). If you f
 |---|---|---|
 | `--depth=<standard\|quick\|deep>` | `standard` | Exploration / audit breadth |
 | `--verbosity=<low\|medium\|high>` | `high` | Wording of generated ADRs/plans (terse → descriptive); evidence always kept in full |
-| `--caveman[=<lite\|full\|ultra\|wenyan-…>]` | `full` | Compress **subagent↔orchestrator** traffic to save context/tokens; human output stays at `--verbosity` |
+| `--caveman[=<lite\|full\|ultra\|wenyan-…>]` | off; `full` when the bare flag is passed | Compress **subagent↔orchestrator** traffic to save context/tokens; human output stays at `--verbosity` |
 | `--model=<model\|plan:model,…>` | auto | Assign model(s) to subagents/executors — native or provider-CLI models (e.g. gpt-5.6-sol via `codex`, glm-5.2 via `opencode`); default = orchestrator picks best-fit per plan from the delegation roster |
 | `--focus=<area>` | — | Scope exploration to one subsystem; a plan-file argument routes to `--review` |
 | `--sub-continuous[=<handle>\|new]` | — | Budget-aware, resumable, multi-session exploration — paces subagents against the live quota and never spills into paid credits without explicit consent |
@@ -136,14 +136,14 @@ Any harness that supports [Agent Skills](https://agentskills.io): install `skill
 
 ## Minion platforms (optional)
 
-Where the `codex` and/or `opencode` CLIs are installed and authenticated, explore offloads worker-tier units (lens sweeps, audits, plan execution) to other providers' models, preserving your session quota for orchestration. Registering them as MCP servers upgrades that lane from fire-and-forget shell runs to steerable dispatch — structured session ids, live heartbeats, abort/redirect (mid-run on opencode; between turns on codex) — and each platform can spawn its own nested subagents under a manager brief:
+Where the `codex` and/or `opencode` CLIs are installed and authenticated — and the effective roster enables that lane (a saved `--setup-plugin` roster decides; without one, every installed lane counts) — explore offloads worker-tier units (lens sweeps, audits, plan execution) to other providers' models, preserving your session quota for orchestration. Registering them as MCP servers upgrades that lane from fire-and-forget shell runs to steerable dispatch — structured session ids, live heartbeats, abort/redirect (mid-run on opencode; between turns on codex) — and each platform can spawn its own nested subagents under a manager brief:
 
 ```bash
 claude mcp add --scope user codex -- codex mcp-server
 claude mcp add --scope user opencode -- node <explore-repo>/skills/explore/scripts/opencode-mcp.mjs
 ```
 
-The vendored `opencode-mcp.mjs` wrapper (zero-dep Node) auto-starts `opencode serve` and exposes six tools (`opencode_run` / `fire` / `status` / `wait` / `steer` / `abort`). Without any registration, the skill falls back to `codex exec --json` / `opencode run --format json` shell runs — same roster, same confinement rules. Mechanics: `skills/explore/references/delegation.md`.
+The vendored `opencode-mcp.mjs` wrapper (zero-dep Node) auto-starts `opencode serve` and exposes seven tools (`opencode_run` / `opencode_fire` / `opencode_status` / `opencode_wait` / `opencode_steer` / `opencode_abort` / `opencode_health`). Without any registration, the skill falls back to `codex exec --json` / `opencode run --format json` shell runs — same roster, same confinement rules. Mechanics: `skills/explore/references/delegation.md`.
 
 ## First-run setup
 
@@ -158,7 +158,7 @@ Answers persist to `${XDG_CONFIG_HOME:-$HOME/.config}/explore/roster.json` (`~/.
 ## How it works
 
 1. **Recon & truth-grounding** (Hard Rule 7) — scope the architecture and stack, then pull *every* source of truth: docs, ADRs, specs, configs, IaC, git signal, and available tool calls / MCP connectors. Establish what's actually there before judging.
-2. **Explore / audit** — go deep across the lenses (and audit categories under `--improve`/`--security`), fanning out read-only subagents bounded by `--depth` (or the live budget under `--sub-continuous`), compressed by `--caveman`, on models picked by `--model` or the orchestrator. Dispatch follows an **org chart** — strong models decide, cheap models execute one well-specified task each, and the orchestrator reads every heartbeat, steering or recalling a spiraling agent up to a stronger model instead of letting it churn. Where provider CLIs are installed (`codex`, `opencode`), worker-tier units offload to other providers' models in confined read-only runs (codex OS-sandboxed; opencode permission-gated) — the session model (and its quota) is reserved for orchestration and judgment.
+2. **Explore / audit** — go deep across the lenses (and audit categories under `--improve`/`--security`), fanning out read-only subagents bounded by `--depth` (or the live budget under `--sub-continuous`), compressed by `--caveman`, on models picked by `--model` or the orchestrator. Dispatch follows an **org chart** — strong models decide, cheap models execute one well-specified task each, and the orchestrator reads every heartbeat, steering or recalling a spiraling agent up to a stronger model instead of letting it churn. Where provider CLIs are installed (`codex`, `opencode`) and the effective roster enables their lane, worker-tier units offload to other providers' models in confined read-only runs (codex OS-sandboxed; opencode permission-gated) — the session model (and its quota) is reserved for orchestration and judgment.
 3. **Vet** — every observation/finding confirmed against the cited code before it's recorded; analyzers and subagents over-report.
 4. **Document / plan** — write the reference (ADRs at `--verbosity`) and/or the plans (grounded in the ADRs), stamped with the explored commit.
 5. **Execute & close the loop** — `--execute-level` dispatches an executor in an isolated worktree and reviews its diff like a tech lead; `--reconcile` keeps the reference and plans in sync. Merging is always the user's call.

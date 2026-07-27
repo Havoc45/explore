@@ -1,6 +1,6 @@
 ---
 name: opencode-worker
-description: Dispatch a self-contained brief to the opencode lane (glm-5.2 xhigh via OpenRouter by default; a valid `roster.json` may name another model) and return its report — the second bulk lane for worker units, independent second perspectives, and the standing fallback when the codex lane is absent or exhausted. Use proactively when offloading worker-tier units and codex is unavailable, or when the brief wants a different-provider perspective.
+description: Dispatch a self-contained brief to the opencode lane (glm-5.2 xhigh via OpenRouter by default; a valid `roster.json` may name another model) and return its report — the second bulk lane for worker units, independent second perspectives, and the standing fallback when the codex lane is absent or exhausted. Use proactively when the effective roster enables the lane and either you are offloading worker-tier units with codex unavailable or the brief wants a different-provider perspective.
 tools: mcp__opencode__opencode_health, mcp__opencode__opencode_run, mcp__opencode__opencode_fire, mcp__opencode__opencode_status, mcp__opencode__opencode_wait, mcp__opencode__opencode_steer, mcp__opencode__opencode_abort, Bash
 model: sonnet
 ---
