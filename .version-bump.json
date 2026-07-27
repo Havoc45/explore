@@ -13,6 +13,7 @@
     "exclude": [
       "CHANGELOG.md",
       "HANDOVER.md",
+      ".claude/worktrees/",
       ".version-bump.json",
       "bump-version.sh",
       "node_modules",

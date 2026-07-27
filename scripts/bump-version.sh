@@ -180,9 +180,17 @@ cmd_audit() {
   echo "Audit: scanning repo for version string '$current_version'..."
   echo ""
 
-  local -a exclude_args=()
+  # Config exclude patterns split by shape: grep's --exclude/--exclude-dir match
+  # basenames only, so a pattern containing "/" (e.g. ".claude/worktrees/" where
+  # executor worktrees hold full repo copies) is instead applied as a
+  # repo-relative path prefix filter on the matches after the scan.
+  local -a exclude_args=() exclude_prefixes=()
   while IFS= read -r pattern; do
-    exclude_args+=("--exclude=$pattern" "--exclude-dir=$pattern")
+    if [[ "$pattern" == */* ]]; then
+      exclude_prefixes+=("${pattern%/}/")
+    else
+      exclude_args+=("--exclude=$pattern" "--exclude-dir=$pattern")
+    fi
   done < <(audit_excludes)
   exclude_args+=("--exclude-dir=.git" "--exclude-dir=node_modules" "--binary-files=without-match")
 
@@ -203,9 +211,13 @@ cmd_audit() {
   local found_undeclared=0
   while IFS= read -r match; do
     [[ -n "$match" ]] || continue
-    local match_file rel_path is_declared=0
+    local match_file rel_path is_declared=0 pfx excluded=0
     match_file=$(echo "$match" | cut -d: -f1)
     rel_path="${match_file#"$REPO_ROOT"/}"
+    for pfx in ${exclude_prefixes[@]+"${exclude_prefixes[@]}"}; do
+      [[ "$rel_path" == "$pfx"* ]] && { excluded=1; break; }
+    done
+    [[ "$excluded" -eq 1 ]] && continue
     for dp in "${declared_paths[@]}"; do
       [[ "$rel_path" == "$dp" ]] && { is_declared=1; break; }
     done

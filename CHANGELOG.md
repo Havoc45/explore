@@ -4,6 +4,22 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.16.6] — 2026-07-27
+
+### Fixed
+- **`bump-version.sh --audit` no longer false-positives on executor
+  worktrees** (`scripts/bump-version.sh`, `.version-bump.json`) — a live
+  executor worktree under `.claude/worktrees/` is a full repo copy, so
+  its manifests carry the current version string and the audit flagged
+  them as undeclared. grep's `--exclude-dir` matches basenames only and
+  cannot express a nested path, so audit exclude patterns are now split
+  by shape: a pattern containing `/` is applied as a repo-relative path
+  prefix filter on matches after the scan, while bare names keep the
+  existing `--exclude`/`--exclude-dir` behavior. `.claude/worktrees/` is
+  added to the exclude list. Verified: a version-bearing manifest under
+  `.claude/worktrees/` passes clean, an identical stray anywhere else
+  still fails the audit, both under macOS bash 3.2.
+
 ## [2.16.5] — 2026-07-27
 
 ### Changed
