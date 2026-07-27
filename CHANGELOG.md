@@ -4,6 +4,20 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.16.1] — 2026-07-27
+
+### Fixed
+- **Every lane gets a model selector in the setup wizard**
+  (`references/setup.md`) — two gaps from the first live dry run: a new
+  single-candidate rule in "Question mechanics" (structured question
+  tools require at least two supplied options, so a one-candidate lane
+  pairs its candidate with a "choose a different id from the inventory
+  shown above" free-text alternative instead of collapsing into a
+  statement), and Step 4 now requires every lane to render its found
+  inventory in the response trail before its question — native aliases,
+  codex's `config.toml` read plus shipped known-good ids, opencode per
+  the long-list rule.
+
 ## [2.16.0] — 2026-07-27
 
 ### Added
