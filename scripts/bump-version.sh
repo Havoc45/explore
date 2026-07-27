@@ -22,6 +22,16 @@ CONFIG="$REPO_ROOT/.version-bump.json"
 
 # --- helpers ---
 
+# The single source of truth for the version format. Both the bump path (which
+# validates the NEW version) and the check path (which validates every value it
+# reads back) go through is_valid_version, so the two can never drift apart.
+# A future format change (pre-release tags?) happens here once.
+VERSION_RE='^[0-9]+\.[0-9]+\.[0-9]+$'
+
+is_valid_version() {
+  [[ "$1" =~ $VERSION_RE ]]
+}
+
 # Read the version from a declared file. JSON files are parsed properly
 # (dotted field paths, numeric segments = array indices); .md files read the
 # first `version: "X.Y.Z"` line of their YAML frontmatter.
@@ -83,6 +93,7 @@ validate_config_paths() {
 cmd_check() {
   local has_drift=0
   local versions=()
+  local labels=()
 
   validate_config_paths
 
@@ -96,10 +107,20 @@ cmd_check() {
       has_drift=1
       continue
     fi
+    # Check the read explicitly — do NOT lean on `set -e`. cmd_audit calls
+    # cmd_check inside an `||` list, which disables errexit for this whole
+    # function, so a failed read would otherwise flow on as an empty string and
+    # be counted as a version. A failed read OR empty output is UNREADABLE,
+    # handled exactly like a MISSING file: reported, drift, not collected.
     local ver
-    ver=$(read_field "$fullpath" "$field")
+    if ! ver=$(read_field "$fullpath" "$field") || [[ -z "$ver" ]]; then
+      printf "  %-50s  UNREADABLE\n" "$path ($field)"
+      has_drift=1
+      continue
+    fi
     printf "  %-50s  %s\n" "$path ($field)" "$ver"
     versions+=("$ver")
+    labels+=("$path ($field)")
   done < <(declared_files)
 
   echo ""
@@ -109,13 +130,28 @@ cmd_check() {
     return 1
   fi
 
+  # Distinctness alone is not sync: eight files agreeing on a garbage string is
+  # not a healthy repo. Validate every value against the same rule cmd_bump
+  # enforces on the way in.
+  local -a invalid=()
+  local i
+  for i in "${!versions[@]}"; do
+    is_valid_version "${versions[i]}" || invalid+=("  ${labels[i]} -> ${versions[i]}")
+  done
+  if [[ ${#invalid[@]} -gt 0 ]]; then
+    echo "INVALID VERSION VALUES — expected X.Y.Z:"
+    printf '%s\n' "${invalid[@]}"
+    echo ""
+    has_drift=1
+  fi
+
   local unique
   unique=$(printf '%s\n' "${versions[@]}" | sort -u | wc -l | tr -d ' ')
   if [[ "$unique" -gt 1 ]]; then
     echo "DRIFT DETECTED — versions are not in sync:"
     printf '%s\n' "${versions[@]}" | sort | uniq -c | sort -rn
     has_drift=1
-  else
+  elif [[ ${#invalid[@]} -eq 0 ]]; then
     echo "All declared files are in sync at ${versions[0]}"
   fi
 
@@ -198,7 +234,7 @@ cmd_audit() {
 cmd_bump() {
   local new_version="$1"
 
-  if ! echo "$new_version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  if ! is_valid_version "$new_version"; then
     echo "error: '$new_version' doesn't look like a version (expected X.Y.Z)" >&2
     exit 1
   fi
