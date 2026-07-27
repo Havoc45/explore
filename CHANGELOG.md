@@ -4,6 +4,21 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.16.5] — 2026-07-27
+
+### Changed
+- **Codex MCP-transport shapes re-pinned on 0.145.0**
+  (`references/delegation.md`) — after an MCP reconnect put a fresh
+  `codex mcp-server` process on the 0.145.0 binary, the worktree-commit
+  executor shape was re-verified over the MCP transport itself
+  (`config.sandbox_workspace_write.writable_roots` dispatch committed in
+  a linked worktree), and a `codex-reply` continuation was verified to
+  retain the thread's cwd and sandbox with no restated confinement. The
+  0.144.5 MCP residue note from 2.16.4 is resolved; the transport matrix
+  is now 0.145.0-clean on both transports, and the pin language records
+  that MCP shapes only count as re-pinned once the server has been
+  reconnected past a CLI upgrade.
+
 ## [2.16.4] — 2026-07-27
 
 ### Changed
