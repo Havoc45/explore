@@ -4,7 +4,7 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [2.16.0] — 2026-07-27
 
 ### Added
 - **`--setup-plugin` — harness-agnostic first-run setup** (`SKILL.md`,
@@ -32,14 +32,80 @@ All notable changes to the `explore` plugin. This project adheres to
   roster is authoritative over the shipped roster table for staffing —
   its lanes are the enabled lanes and its models the eligible models,
   with the shipped table remaining the zero-config fallback and an
-  invalid file treated as absent for the run. That paragraph also
-  records the honest boundary: the pre-built lane wrapper agents still
-  name their shipped default models internally, so a roster naming
-  other models dispatches them through the transports directly until a
-  follow-up plan wires the wrappers to the roster. (`usage_probe.py` is
+  invalid file treated as absent for the run. (`usage_probe.py` is
   unaffected — its probe model is a fixed quota-header read,
   roster-independent by design; its limitation is lane coverage,
   claude + codex today.)
+- **Roster-wired lane wrapper agents** (`agents/codex-worker.md`,
+  `agents/opencode-worker.md`, `references/delegation.md`) — both
+  wrappers read `roster.json` at run time: a schema-valid roster row for
+  their lane overrides the shipped default model (brief-named models
+  still win; absent/invalid roster → shipped default, silently), the
+  glm-5.2 high/xhigh variant clamp stays scoped to glm-5.2, and every
+  report label carries the model *actually dispatched*. The roster
+  override paragraph's "known boundary" is retired in the same release
+  it shipped.
+
+### Changed
+- **opus-5 replaces opus-4.8 in the shipped roster** at 6/8/8 (operator
+  re-rank after opus-5's first live executor run) — every routing rule,
+  rung-staffing row, and labeling example renamed with it.
+- **The effective roster gates every routing default**
+  (`delegation.md`, `closing-the-loop.md`, `SKILL.md`, `README.md`,
+  both agent descriptions) — doctrine that activated a CLI lane because
+  it was *installed* is now qualified by the roster contract: defined
+  once ("the effective roster", zero-usable-lane fallback folded in),
+  with second opinions, judge panels, and the computer-use observer
+  selecting only from enabled lanes, and reduced coverage stated in the
+  run record rather than silently re-enabling a disabled lane. The
+  shipped-defaults fallback now reads identically at all five sites.
+- **Honest transport pins** (`delegation.md`) — verification claims are
+  per-shape and per-process instead of one blanket line: codex CLI
+  0.145.0 re-verified for the read-only shell shape (2026-07-27),
+  opencode MCP dispatch verified against serve 1.18.3 under CLI 1.18.6,
+  and the worktree-commit + resume confinement shapes explicitly marked
+  not yet re-verified on 0.145.0. Every runnable `codex exec` example
+  now closes stdin (`</dev/null`), the wrapper tool count reads seven
+  everywhere (`opencode_health` included), the stale-wrapper changelog
+  citation is line-number-free, the README caveman default is corrected
+  to "off; `full` when the bare flag is passed", and `HANDOVER.md` is
+  banner-marked as a frozen v2.11.0 snapshot.
+
+### Fixed
+- **`usage_probe.py` fails closed** — missing or non-numeric quota
+  headers/fields (JSON booleans included) now return `ok: false` with
+  `schema_error: missing <names>` and `null` quota fields instead of a
+  fabricated 0% used that budget automation would read as full quota;
+  every environmental crash path (credentials, refresh, network,
+  payloads, unresolvable home) returns structured JSON instead of a
+  traceback; `--allow-refresh` gating unchanged. An OpenRouter lane was
+  investigated and deliberately not implemented: OpenRouter meters
+  dollars against calendar periods — no honest mapping onto the probe's
+  rolling-window percentages exists.
+- **`bump-version.sh` gates fail loud** — `--check` reports UNREADABLE
+  rows instead of collecting blank versions, and every collected value
+  is validated against the shared SemVer rule `cmd_bump` enforces on
+  input; eight files agreeing on a garbage string no longer passes.
+  Happy-path output is byte-identical.
+- **`opencode-mcp.mjs` v1.4.0** — graceful shutdown drains in-flight
+  calls on stdin EOF and signals (one supervisor signal joins the
+  drain; a second forces exit), connection-level failures (ECONNRESET,
+  EPIPE, undici socket errors) classify as *down* so a crashed serve
+  self-heals instead of reading *busy* forever, every `api()` error
+  carries its endpoint, a literal `null`/scalar JSON-RPC line no longer
+  crashes the process, the steer settle poll is bounded, each request
+  id gets exactly one response, and 1.18.3 session counts carry a
+  floor-value note.
+- **Analyzer correctness batch** — `project_architect` records every
+  oversized class (not just the file-final one); `dependency_analyzer`
+  fails checks on recorded manifest errors, accepts optional-only
+  PEP 621, and matches imports to internal modules exactly (no more
+  substring-fabricated edges, cycles, or coupling); the diagram
+  generator detects react from real evidence (`.jsx`/`.tsx` outside
+  vendored trees, or a react dependency — `package.json` alone is Node)
+  and gains deterministic, uncapped edge detection; `mermaid-verify`
+  scans fences line-by-line, fails on unclosed blocks, and its
+  extraction is testable without installing mermaid/jsdom.
 
 ## [2.15.4] — 2026-07-18
 
