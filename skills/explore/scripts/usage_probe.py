@@ -22,7 +22,16 @@ object; --provider both nests {"claude": {...}, "codex": {...}}. Fields:
 `session_*` is the rolling window (Claude 5h / Codex primary), `weekly_*` the
 long window (Claude 7d / Codex secondary). pct = percent USED, 0-100.
 
-Exit code: 0 if every polled provider returned ok, else 1.
+The four quota fields are `null` whenever the probe has no trustworthy number
+(every ok:false result, and any window the provider did not report) — never a
+fabricated 0, which a consumer would read as "full quota remaining". A genuine
+0 is only ever emitted under ok:true. If a provider stops sending the quota
+headers/fields the probe reads, the result is ok:false with status
+"schema_error: missing <names>" — a provider-format change, not a full window.
+
+Exit code: 0 if every polled provider returned ok, else 1. Environmental
+failures (no credentials, network, malformed payloads) are reported as
+structured JSON with ok:false; the probe never exits with a traceback.
 
 Flags:
   --provider claude|codex|both   default claude
@@ -47,15 +56,26 @@ import base64
 import getpass
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
 import sys
 import time
+from http.client import HTTPException
 from pathlib import Path
 from urllib import error, request
 
 # ---------- shared plumbing ----------
+
+# Everything a transport can raise for an environmental reason. HTTPException
+# is not an OSError (http.client.IncompleteRead, RemoteDisconnected on a read),
+# so catching OSError alone still lets a truncated response traceback.
+NETWORK_ERRORS = (error.URLError, TimeoutError, OSError, HTTPException)
+
+# Sentinel returned in place of (storage, blob) when a credential store is
+# readable but does not decode to a JSON object.
+CREDENTIALS_MALFORMED = "malformed_credentials"
 
 
 def log(msg: str) -> None:
@@ -97,9 +117,15 @@ def keychain_write(service: str, account: str, blob: str) -> bool:
     return True
 
 
-def result(provider: str, ok: bool, status: str, session_pct: int = 0,
-           session_reset_min: int = 0, weekly_pct: int = 0,
-           weekly_reset_min: int = 0) -> dict:
+def result(provider: str, ok: bool, status: str, session_pct: int | None = None,
+           session_reset_min: int | None = None, weekly_pct: int | None = None,
+           weekly_reset_min: int | None = None) -> dict:
+    """One probe outcome, with the stable field set consumers read.
+
+    The four quota fields default to None (JSON null) so that a result carrying
+    no usable quota reading says so, rather than reporting 0 — which a consumer
+    computing `remaining = 100 - session_pct` would read as a full window.
+    """
     return {
         "provider": provider,
         "ok": ok,
@@ -115,7 +141,7 @@ def result(provider: str, ok: bool, status: str, session_pct: int = 0,
 # ---------- claude provider ----------
 
 CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials"
-CLAUDE_CREDENTIALS_PATH = Path.home() / ".claude" / ".credentials.json"
+CLAUDE_CREDENTIALS_RELPATH = (".claude", ".credentials.json")
 CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
 CLAUDE_API_HEADERS = {
     "anthropic-version": "2023-06-01",
@@ -128,6 +154,11 @@ CLAUDE_API_BODY = {
     "max_tokens": 1,
     "messages": [{"role": "user", "content": "hi"}],
 }
+CLAUDE_HDR_STATUS = "anthropic-ratelimit-unified-5h-status"
+CLAUDE_HDR_5H_PCT = "anthropic-ratelimit-unified-5h-utilization"
+CLAUDE_HDR_5H_RESET = "anthropic-ratelimit-unified-5h-reset"
+CLAUDE_HDR_7D_PCT = "anthropic-ratelimit-unified-7d-utilization"
+CLAUDE_HDR_7D_RESET = "anthropic-ratelimit-unified-7d-reset"
 CLAUDE_OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
 CLAUDE_OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 CLAUDE_OAUTH_SCOPE = " ".join([
@@ -136,20 +167,42 @@ CLAUDE_OAUTH_SCOPE = " ".join([
 ])
 
 
-def _claude_read_auth() -> tuple[str, dict] | None:
-    """Return (storage, parsed-blob) from keychain (macOS) or the credentials file."""
+def _claude_credentials_path() -> Path:
+    """Resolved lazily, mirroring _codex_home(): Path.home() raises RuntimeError
+    when the home directory is unresolvable, and at module scope that would be a
+    traceback at import time — before probe()'s catch-all exists to structure it.
+    """
+    return Path.home().joinpath(*CLAUDE_CREDENTIALS_RELPATH)
+
+
+def _claude_read_auth() -> tuple[str, dict] | str | None:
+    """Return (storage, parsed-blob) from keychain (macOS) or the credentials file.
+
+    CREDENTIALS_MALFORMED when a store was readable but decoded to something
+    other than a JSON object (callers index it as a dict); None when no store
+    is readable. A store that fails to decode still falls through to the next
+    one, as before.
+    """
+    saw_unusable = False
     if sys.platform == "darwin":
         blob = keychain_read(CLAUDE_KEYCHAIN_SERVICE, getpass.getuser()) \
             or keychain_read(CLAUDE_KEYCHAIN_SERVICE, None)
         if blob:
             try:
-                return ("keychain", json.loads(blob))
-            except json.JSONDecodeError:
-                pass
+                parsed = json.loads(blob)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, dict):
+                return ("keychain", parsed)
+            saw_unusable = parsed is not None
     try:
-        return ("file", json.loads(CLAUDE_CREDENTIALS_PATH.read_text()))
-    except (OSError, json.JSONDecodeError):
-        return None
+        parsed = json.loads(_claude_credentials_path().read_text())
+    except RuntimeError as e:  # home directory unresolvable
+        log(f"claude home unresolvable: {type(e).__name__}")
+        return CREDENTIALS_MALFORMED if saw_unusable else None
+    except (OSError, ValueError):  # ValueError covers JSON and decoding errors
+        return CREDENTIALS_MALFORMED if saw_unusable else None
+    return ("file", parsed) if isinstance(parsed, dict) else CREDENTIALS_MALFORMED
 
 
 def _claude_tokens(data: dict) -> tuple[str, str | None] | None:
@@ -164,6 +217,8 @@ def _claude_tokens(data: dict) -> tuple[str, str | None] | None:
 
 
 def _claude_persist(storage: str, data: dict, refresh_data: dict) -> None:
+    """Write the refreshed token back. Best effort: a store the probe cannot
+    write does not invalidate the token it just obtained."""
     oauth = data.get("claudeAiOauth")
     if not isinstance(oauth, dict):
         oauth = data
@@ -173,48 +228,101 @@ def _claude_persist(storage: str, data: dict, refresh_data: dict) -> None:
     if isinstance(refresh_data.get("expires_in"), (int, float)):
         oauth["expiresAt"] = int(time.time() * 1000 + refresh_data["expires_in"] * 1000)
     blob = json.dumps(data, indent=2)
-    if storage == "keychain":
-        keychain_write(CLAUDE_KEYCHAIN_SERVICE, getpass.getuser(), blob)
-    else:
-        CLAUDE_CREDENTIALS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        CLAUDE_CREDENTIALS_PATH.write_text(blob)
-        CLAUDE_CREDENTIALS_PATH.chmod(0o600)
+    try:
+        if storage == "keychain":
+            keychain_write(CLAUDE_KEYCHAIN_SERVICE, getpass.getuser(), blob)
+        else:
+            path = _claude_credentials_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(blob)
+            path.chmod(0o600)
+    except (OSError, RuntimeError) as e:
+        log(f"claude credential write failed: {type(e).__name__}")
 
 
-def _claude_refresh(storage: str, data: dict, refresh_token: str) -> str | None:
-    status, _, body = http("POST", CLAUDE_OAUTH_TOKEN_URL,
-                           {"Content-Type": "application/json"},
-                           {"grant_type": "refresh_token",
-                            "refresh_token": refresh_token,
-                            "client_id": CLAUDE_OAUTH_CLIENT_ID,
-                            "scope": CLAUDE_OAUTH_SCOPE}, timeout=30.0)
+def _claude_refresh(storage: str, data: dict, refresh_token: str) -> tuple[str | None, str]:
+    """(access_token, "") on success, (None, "<reason>") on failure — the reason
+    names the failure class only, never a response body or a token."""
+    try:
+        status, _, body = http("POST", CLAUDE_OAUTH_TOKEN_URL,
+                               {"Content-Type": "application/json"},
+                               {"grant_type": "refresh_token",
+                                "refresh_token": refresh_token,
+                                "client_id": CLAUDE_OAUTH_CLIENT_ID,
+                                "scope": CLAUDE_OAUTH_SCOPE}, timeout=30.0)
+    except NETWORK_ERRORS as e:
+        log(f"claude OAuth refresh transport error: {type(e).__name__}")
+        return None, type(e).__name__
     if status >= 400:
         log(f"claude OAuth refresh HTTP {status}")
-        return None
+        return None, f"http_{status}"
     try:
         refresh_data = json.loads(body)
-    except json.JSONDecodeError:
-        return None
+    except ValueError:
+        return None, "bad_json"
+    if not isinstance(refresh_data, dict):
+        return None, "bad_json"
     access = refresh_data.get("access_token")
-    if not isinstance(access, str):
-        return None
+    if not isinstance(access, str) or not access:
+        return None, "no_access_token"
     _claude_persist(storage, data, refresh_data)
     log("claude OAuth refresh succeeded")
-    return access
+    return access, ""
 
 
-def _hdr_pct(headers: dict, name: str) -> int:
+def _hdr(headers: dict, name: str) -> str | None:
+    """Case-insensitive header lookup.
+
+    HTTP field names are case-insensitive (RFC 9110 §5.1) but urllib hands back
+    whatever casing the server sent, so a strict parser must not treat a casing
+    change as a missing header.
+    """
+    value = headers.get(name)
+    if value is not None:
+        return value
+    lowered = name.lower()
+    for key, val in headers.items():
+        if key.lower() == lowered:
+            return val
+    return None
+
+
+def _finite(value: object) -> float | None:
+    """value as a finite float, else None.
+
+    Booleans are rejected before the conversion: float(True) is 1.0, so a JSON
+    `true` in a quota field would otherwise pass strictness and report 1% used.
+    NaN and infinity are not data either.
+    """
+    if isinstance(value, bool):
+        return None
     try:
-        return int(round(float(headers.get(name, "0")) * 100))
-    except ValueError:
-        return 0
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    return num if math.isfinite(num) else None
 
 
-def _hdr_reset_min(headers: dict, name: str) -> int:
-    try:
-        mins = (float(headers.get(name, "0")) - time.time()) / 60.0
-    except ValueError:
-        return 0
+def _hdr_pct(headers: dict, name: str) -> int | None:
+    """Percent used (0-100) from a 0-1 utilization header.
+
+    None when the header is absent or non-numeric — absence is a provider
+    format change, and must stay distinguishable from a genuine 0% used.
+    """
+    fraction = _finite(_hdr(headers, name))
+    return None if fraction is None else int(round(fraction * 100))
+
+
+def _hdr_reset_min(headers: dict, name: str) -> int | None:
+    """Minutes until the window resets, from a unix-epoch header.
+
+    None when the header is absent or non-numeric; a window already past its
+    reset instant is a genuine 0.
+    """
+    reset_at = _finite(_hdr(headers, name))
+    if reset_at is None:
+        return None
+    mins = (reset_at - time.time()) / 60.0
     return int(round(mins)) if mins > 0 else 0
 
 
@@ -222,6 +330,8 @@ def claude_usage(allow_refresh: bool) -> dict:
     auth = _claude_read_auth()
     if auth is None:
         return result("claude", False, "no_credentials")
+    if not isinstance(auth, tuple):
+        return result("claude", False, "credential_parse_error")
     storage, data = auth
     tokens = _claude_tokens(data)
     if tokens is None:
@@ -232,27 +342,39 @@ def claude_usage(allow_refresh: bool) -> dict:
         headers = dict(CLAUDE_API_HEADERS, Authorization=f"Bearer {access}")
         try:
             status, resp_headers, body = http("POST", CLAUDE_API_URL, headers, CLAUDE_API_BODY)
-        except (error.URLError, TimeoutError, OSError) as e:
+        except NETWORK_ERRORS as e:
             return result("claude", False, f"network_error: {e}")
         if status == 401 and attempt == 0:
             if not allow_refresh:
                 return result("claude", False, "token_expired")
             if not refresh:
                 return result("claude", False, "token_expired_no_refresh_token")
-            refreshed = _claude_refresh(storage, data, refresh)
+            refreshed, reason = _claude_refresh(storage, data, refresh)
             if refreshed is None:
-                return result("claude", False, "refresh_failed")
+                return result("claude", False, f"refresh_failed: {reason}")
             access = refreshed
             continue
         if status >= 400:
             return result("claude", False, f"http_{status}: {body[:200].decode(errors='replace')}")
+        session_pct = _hdr_pct(resp_headers, CLAUDE_HDR_5H_PCT)
+        session_reset_min = _hdr_reset_min(resp_headers, CLAUDE_HDR_5H_RESET)
+        weekly_pct = _hdr_pct(resp_headers, CLAUDE_HDR_7D_PCT)
+        weekly_reset_min = _hdr_reset_min(resp_headers, CLAUDE_HDR_7D_RESET)
+        missing = [name for name, value in (
+            (CLAUDE_HDR_5H_PCT, session_pct),
+            (CLAUDE_HDR_5H_RESET, session_reset_min),
+            (CLAUDE_HDR_7D_PCT, weekly_pct),
+            (CLAUDE_HDR_7D_RESET, weekly_reset_min),
+        ) if value is None]
+        if missing:
+            return result("claude", False, f"schema_error: missing {', '.join(missing)}")
         return result(
             "claude", True,
-            resp_headers.get("anthropic-ratelimit-unified-5h-status", "unknown"),
-            session_pct=_hdr_pct(resp_headers, "anthropic-ratelimit-unified-5h-utilization"),
-            session_reset_min=_hdr_reset_min(resp_headers, "anthropic-ratelimit-unified-5h-reset"),
-            weekly_pct=_hdr_pct(resp_headers, "anthropic-ratelimit-unified-7d-utilization"),
-            weekly_reset_min=_hdr_reset_min(resp_headers, "anthropic-ratelimit-unified-7d-reset"),
+            _hdr(resp_headers, CLAUDE_HDR_STATUS) or "unknown",
+            session_pct=session_pct,
+            session_reset_min=session_reset_min,
+            weekly_pct=weekly_pct,
+            weekly_reset_min=weekly_reset_min,
         )
     return result("claude", False, "unreachable")
 
@@ -277,13 +399,21 @@ def _codex_keychain_account() -> str:
     return f"cli|{digest[:16]}"
 
 
-def _codex_read_auth() -> tuple[str, dict] | None:
-    auth_path = _codex_home() / "auth.json"
+def _codex_read_auth() -> tuple[str, dict] | str | None:
+    """(storage, blob), CREDENTIALS_MALFORMED when a store decoded to something
+    other than a JSON object, or None when no store is readable."""
+    try:
+        auth_path = _codex_home() / "auth.json"
+    except RuntimeError as e:  # expanduser() with no resolvable home
+        log(f"codex home unresolvable: {type(e).__name__}")
+        return None
+    saw_unusable = False
     try:
         data = json.loads(auth_path.read_text())
         if isinstance(data, dict):
             return ("file", data)
-    except (OSError, json.JSONDecodeError):
+        saw_unusable = data is not None
+    except (OSError, ValueError):  # ValueError covers JSON and decoding errors
         pass
     if sys.platform == "darwin":
         blob = keychain_read(CODEX_KEYCHAIN_SERVICE, _codex_keychain_account())
@@ -292,9 +422,10 @@ def _codex_read_auth() -> tuple[str, dict] | None:
                 data = json.loads(blob)
                 if isinstance(data, dict):
                     return ("keychain", data)
-            except json.JSONDecodeError:
+                saw_unusable = saw_unusable or data is not None
+            except ValueError:
                 pass
-    return None
+    return CREDENTIALS_MALFORMED if saw_unusable else None
 
 
 def _codex_account_id(tokens: dict) -> str | None:
@@ -318,6 +449,8 @@ def _codex_account_id(tokens: dict) -> str | None:
 
 
 def _codex_persist(storage: str, data: dict, refresh_data: dict) -> None:
+    """Write the refreshed token back. Best effort: a store the probe cannot
+    write does not invalidate the token it just obtained."""
     tokens = data.setdefault("tokens", {})
     if isinstance(tokens, dict):
         tokens["access_token"] = refresh_data["access_token"]
@@ -326,60 +459,71 @@ def _codex_persist(storage: str, data: dict, refresh_data: dict) -> None:
         if isinstance(refresh_data.get("id_token"), str):
             tokens["id_token"] = refresh_data["id_token"]
     blob = json.dumps(data, indent=2)
-    if storage == "file":
-        path = _codex_home() / "auth.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(blob)
-        path.chmod(0o600)
-    else:
-        keychain_write(CODEX_KEYCHAIN_SERVICE, _codex_keychain_account(), blob)
+    try:
+        if storage == "file":
+            path = _codex_home() / "auth.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(blob)
+            path.chmod(0o600)
+        else:
+            keychain_write(CODEX_KEYCHAIN_SERVICE, _codex_keychain_account(), blob)
+    except (OSError, RuntimeError) as e:
+        log(f"codex credential write failed: {type(e).__name__}")
 
 
-def _codex_refresh(storage: str, data: dict, refresh_token: str) -> str | None:
-    status, _, body = http("POST", CODEX_REFRESH_TOKEN_URL,
-                           {"Content-Type": "application/json"},
-                           {"client_id": CODEX_REFRESH_CLIENT_ID,
-                            "grant_type": "refresh_token",
-                            "refresh_token": refresh_token}, timeout=30.0)
+def _codex_refresh(storage: str, data: dict, refresh_token: str) -> tuple[str | None, str]:
+    """(access_token, "") on success, (None, "<reason>") on failure — the reason
+    names the failure class only, never a response body or a token."""
+    try:
+        status, _, body = http("POST", CODEX_REFRESH_TOKEN_URL,
+                               {"Content-Type": "application/json"},
+                               {"client_id": CODEX_REFRESH_CLIENT_ID,
+                                "grant_type": "refresh_token",
+                                "refresh_token": refresh_token}, timeout=30.0)
+    except NETWORK_ERRORS as e:
+        log(f"codex OAuth refresh transport error: {type(e).__name__}")
+        return None, type(e).__name__
     if status >= 400:
         log(f"codex OAuth refresh HTTP {status}")
-        return None
+        return None, f"http_{status}"
     try:
         refresh_data = json.loads(body)
-    except json.JSONDecodeError:
-        return None
+    except ValueError:
+        return None, "bad_json"
+    if not isinstance(refresh_data, dict):
+        return None, "bad_json"
     access = refresh_data.get("access_token")
-    if not isinstance(access, str):
-        return None
+    if not isinstance(access, str) or not access:
+        return None, "no_access_token"
     _codex_persist(storage, data, refresh_data)
     log("codex OAuth refresh succeeded")
-    return access
+    return access, ""
 
 
-def _codex_pct(value: object) -> int:
-    try:
-        return max(0, min(100, int(round(float(value)))))
-    except (TypeError, ValueError):
-        return 0
+def _codex_pct(value: object) -> int | None:
+    """Percent used (0-100), clamped; None when the field is absent or non-numeric."""
+    pct = _finite(value)
+    return None if pct is None else max(0, min(100, int(round(pct))))
 
 
-def _codex_reset_min(window: dict) -> int:
-    reset_at = window.get("reset_at")
+def _codex_reset_min(window: dict) -> int | None:
+    """Minutes until this window resets, from reset_at (unix) or
+    reset_after_seconds; None when neither field carries a usable number."""
+    reset_at = _finite(window.get("reset_at"))
     if reset_at is not None:
-        try:
-            return max(0, int(round((float(reset_at) - time.time()) / 60.0)))
-        except (TypeError, ValueError):
-            pass
-    try:
-        return max(0, int(round(float(window.get("reset_after_seconds")) / 60.0)))
-    except (TypeError, ValueError):
-        return 0
+        return max(0, int(round((reset_at - time.time()) / 60.0)))
+    reset_after = _finite(window.get("reset_after_seconds"))
+    if reset_after is not None:
+        return max(0, int(round(reset_after / 60.0)))
+    return None
 
 
 def codex_usage(allow_refresh: bool) -> dict:
     auth = _codex_read_auth()
     if auth is None:
         return result("codex", False, "no_credentials")
+    if not isinstance(auth, tuple):
+        return result("codex", False, "credential_parse_error")
     storage, data = auth
     tokens = data.get("tokens")
     if not isinstance(tokens, dict) or not isinstance(tokens.get("access_token"), str):
@@ -398,7 +542,7 @@ def codex_usage(allow_refresh: bool) -> dict:
         for url in CODEX_USAGE_URLS:
             try:
                 status, _, body = http("GET", url, headers)
-            except (error.URLError, TimeoutError, OSError) as e:
+            except NETWORK_ERRORS as e:
                 return result("codex", False, f"network_error: {e}")
             if status == 404:
                 last = (status, body)
@@ -408,9 +552,9 @@ def codex_usage(allow_refresh: bool) -> dict:
                     return result("codex", False, "token_expired")
                 if not isinstance(refresh, str):
                     return result("codex", False, "token_expired_no_refresh_token")
-                refreshed = _codex_refresh(storage, data, refresh)
+                refreshed, reason = _codex_refresh(storage, data, refresh)
                 if refreshed is None:
-                    return result("codex", False, "refresh_failed")
+                    return result("codex", False, f"refresh_failed: {reason}")
                 access = refreshed
                 last = "retry"
                 break
@@ -418,7 +562,7 @@ def codex_usage(allow_refresh: bool) -> dict:
                 return result("codex", False, f"http_{status}: {body[:200].decode(errors='replace')}")
             try:
                 payload = json.loads(body)
-            except json.JSONDecodeError:
+            except ValueError:  # JSON and decoding errors both land here
                 return result("codex", False, "bad_json")
             return _codex_parse(payload)
         if last == "retry":
@@ -432,10 +576,10 @@ def _codex_parse(payload: object) -> dict:
         return result("codex", False, "bad_usage_payload")
     rate_limit = payload.get("rate_limit")
     if not isinstance(rate_limit, dict):
-        return result("codex", False, "no_rate_limit")
+        return result("codex", False, "schema_error: missing rate_limit")
     primary = rate_limit.get("primary_window")
     if not isinstance(primary, dict):
-        return result("codex", False, "no_windows")
+        return result("codex", False, "schema_error: missing primary_window")
     # Some plans (e.g. prolite) expose a single window: secondary is null.
     # Mirror primary into the weekly fields so consumers always see the budget.
     secondary = rate_limit.get("secondary_window")
@@ -450,12 +594,27 @@ def _codex_parse(payload: object) -> dict:
         status = "limited"
     else:
         status = "unknown"
+    session_pct = _codex_pct(primary.get("used_percent"))
+    session_reset_min = _codex_reset_min(primary)
+    weekly_pct = _codex_pct(secondary.get("used_percent"))
+    weekly_reset_min = _codex_reset_min(secondary)
+    missing = [name for name, value in (
+        ("primary_window.used_percent", session_pct),
+        ("primary_window.reset_at|reset_after_seconds", session_reset_min),
+    ) if value is None]
+    if secondary is not primary:  # a mirrored secondary is already covered above
+        missing += [name for name, value in (
+            ("secondary_window.used_percent", weekly_pct),
+            ("secondary_window.reset_at|reset_after_seconds", weekly_reset_min),
+        ) if value is None]
+    if missing:
+        return result("codex", False, f"schema_error: missing {', '.join(missing)}")
     return result(
         "codex", True, status,
-        session_pct=_codex_pct(primary.get("used_percent")),
-        session_reset_min=_codex_reset_min(primary),
-        weekly_pct=_codex_pct(secondary.get("used_percent")),
-        weekly_reset_min=_codex_reset_min(secondary),
+        session_pct=session_pct,
+        session_reset_min=session_reset_min,
+        weekly_pct=weekly_pct,
+        weekly_reset_min=weekly_reset_min,
     )
 
 
@@ -464,11 +623,25 @@ def _codex_parse(payload: object) -> dict:
 PROVIDERS = {"claude": claude_usage, "codex": codex_usage}
 
 
+def probe(provider: str, allow_refresh: bool) -> dict:
+    """Run one provider probe, converting anything the targeted handlers missed
+    into a structured result. Consumers parse this output, so an unforeseen
+    environmental failure has to be JSON, not a traceback. The status carries
+    the exception's class only — a message can quote the payload being parsed,
+    which on these paths is credential material.
+    """
+    try:
+        return PROVIDERS[provider](allow_refresh)
+    except Exception as e:  # last resort: never let the probe die on stdout
+        log(f"{provider} probe raised {type(e).__name__}")
+        return result(provider, False, f"internal_error: {type(e).__name__}")
+
+
 def poll(provider: str, allow_refresh: bool) -> tuple[dict, bool]:
     if provider == "both":
-        out = {name: fn(allow_refresh) for name, fn in PROVIDERS.items()}
+        out = {name: probe(name, allow_refresh) for name in PROVIDERS}
         return out, all(v["ok"] for v in out.values())
-    out = PROVIDERS[provider](allow_refresh)
+    out = probe(provider, allow_refresh)
     return out, out["ok"]
 
 
