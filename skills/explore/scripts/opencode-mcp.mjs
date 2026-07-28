@@ -33,7 +33,7 @@ import {
 import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 
-const VERSION = "1.4.0";
+const VERSION = "1.4.1";
 const PORT = Number(process.env.OPENCODE_PORT || 4096);
 const DEFAULT_HOST = "127.0.0.1";
 const HOST = process.env.OPENCODE_HOST || DEFAULT_HOST;
@@ -390,6 +390,12 @@ async function ensureServer() {
   }
 }
 
+// Node 24 + undici known issue (observed once, 2026-07-27; not reproducible on
+// demand): a TCP RST during connection establishment surfaced as an uncatchable
+// `setTypeOfService EINVAL` process crash. No in-process handler can trap it;
+// recovery is a wrapper respawn — the MCP client's auto-restart where the
+// harness does that, otherwise a manual reconnect (e.g. /mcp). Persisted
+// sessions remain on disk. Upstream issue candidate.
 async function api(method, path, { directory, body, timeoutMs } = {}) {
   const url = new URL(BASE + path);
   if (directory) url.searchParams.set("directory", directory);
@@ -537,19 +543,21 @@ async function readMessages(sessionID, directory, timeoutMs) {
     last = { text, error, tools, cost: m.info?.cost };
     break;
   }
-  // Terminal vs in-flight (verified on opencode 1.18.3): the assistant message
-  // record is created at turn start with `info.time.completed` unset while it
-  // streams, and stamped (plus `finish`) when the turn ends. So newest-is-
-  // assistant alone is NOT "answered" — the completed stamp is. An erroring
-  // turn also terminates with `info.error` set.
+  // Terminal vs in-flight (verified on opencode 1.18.3, still present on
+  // 1.18.6 (latest verified)): the assistant message record is created at turn
+  // start with `info.time.completed` unset while it streams, and stamped (plus
+  // `finish`) when the turn ends. So newest-is-assistant alone is NOT
+  // "answered" — the completed stamp is. An erroring turn also terminates
+  // with `info.error` set.
   const newest = msgs[msgs.length - 1];
   const newestInfo = newest?.info || {};
   const isAssistant = newestInfo.role === "assistant";
   const done = Boolean(newestInfo.time?.completed) || Boolean(newestInfo.error);
   const replied = isAssistant && done;
   // streaming: the turn has an in-flight assistant record — the session is
-  // working even when /session/status claims idle (1.18.3 reports {} for busy
-  // sessions; this is the reliable running signal).
+  // working even when /session/status claims idle (the status endpoint reports
+  // {} for busy sessions — verified on opencode 1.18.3, still present on
+  // 1.18.6 (latest verified); this is the reliable running signal).
   const streaming = isAssistant && !done;
   return { last, replied, streaming };
 }
@@ -759,13 +767,13 @@ async function healthReport(args) {
     report.sessions_total = entries.length;
     report.sessions_running = entries.filter(([, s]) => s?.type && s.type !== "idle").length;
     if (entries.length === 0) {
-      // The server answered but listed nothing. On opencode <=1.18.3 that also
-      // happens while sessions are generating, so these counts are a floor,
-      // not a truth. opencode_status/opencode_wait do not rely on them (they
-      // read the message stream), but the dashboard would otherwise read as a
-      // confident zero.
+      // The server answered but listed nothing. Verified on opencode 1.18.3,
+      // still present on 1.18.6 (latest verified): that also happens while
+      // sessions are generating, so these counts are a floor, not a truth.
+      // opencode_status/opencode_wait do not rely on them (they read the message
+      // stream), but the dashboard would otherwise read as a confident zero.
       report.sessions_note =
-        "session counts may under-report on opencode <=1.18.3 (status endpoint returns {} while generating)";
+        "session counts may under-report while sessions are generating (/session/status returns {} for busy sessions — verified on opencode 1.18.3, still present on 1.18.6)";
     }
     if (args.session_id) report.session = statuses?.[args.session_id] ?? null;
   } catch (err) {
@@ -817,8 +825,9 @@ async function callTool(name, args) {
       let idleUnreplied = 0;
       // done = the last prompt answered (completed stamp) and nothing running.
       // running = /session/status busy OR an in-flight assistant record
-      // (`streaming`) — on 1.18.3 the status endpoint reports {} for busy
-      // sessions, so streaming is the signal that actually tracks work.
+      // (`streaming`) — the status endpoint reports {} for busy sessions
+      // (verified on opencode 1.18.3, still present on 1.18.6 (latest verified)),
+      // so streaming is the signal that actually tracks work.
       for (;;) {
         const statusBusy = firstStatus
           ? await retryFirstApiCall(() => isRunning(args.session_id, directory))
