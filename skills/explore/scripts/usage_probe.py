@@ -178,10 +178,11 @@ def _claude_credentials_path() -> Path:
 def _claude_read_auth() -> tuple[str, dict] | str | None:
     """Return (storage, parsed-blob) from keychain (macOS) or the credentials file.
 
-    CREDENTIALS_MALFORMED when a store was readable but decoded to something
-    other than a JSON object (callers index it as a dict); None when no store
-    is readable. A store that fails to decode still falls through to the next
-    one, as before.
+    A missing file returns None unless a keychain value already decoded to a
+    non-null, non-dict value. An unreadable or undecodable file returns
+    CREDENTIALS_MALFORMED. A keychain value that decodes to a non-null,
+    non-dict value marks that store unusable; one that fails to decode falls
+    through without doing so, preserving the existing behavior.
     """
     saw_unusable = False
     if sys.platform == "darwin":
@@ -200,8 +201,10 @@ def _claude_read_auth() -> tuple[str, dict] | str | None:
     except RuntimeError as e:  # home directory unresolvable
         log(f"claude home unresolvable: {type(e).__name__}")
         return CREDENTIALS_MALFORMED if saw_unusable else None
-    except (OSError, ValueError):  # ValueError covers JSON and decoding errors
+    except FileNotFoundError:
         return CREDENTIALS_MALFORMED if saw_unusable else None
+    except (ValueError, OSError):  # ValueError covers JSON and decoding errors
+        return CREDENTIALS_MALFORMED
     return ("file", parsed) if isinstance(parsed, dict) else CREDENTIALS_MALFORMED
 
 
@@ -400,8 +403,14 @@ def _codex_keychain_account() -> str:
 
 
 def _codex_read_auth() -> tuple[str, dict] | str | None:
-    """(storage, blob), CREDENTIALS_MALFORMED when a store decoded to something
-    other than a JSON object, or None when no store is readable."""
+    """Return parsed credentials from the file or keychain.
+
+    A missing file falls through to the keychain; an unreadable or undecodable
+    file marks the result CREDENTIALS_MALFORMED unless the keychain supplies a
+    valid dict. A keychain value that decodes to a non-null, non-dict value
+    marks that store unusable; one that fails to decode falls through without
+    doing so, preserving the existing behavior.
+    """
     try:
         auth_path = _codex_home() / "auth.json"
     except RuntimeError as e:  # expanduser() with no resolvable home
@@ -413,8 +422,10 @@ def _codex_read_auth() -> tuple[str, dict] | str | None:
         if isinstance(data, dict):
             return ("file", data)
         saw_unusable = data is not None
-    except (OSError, ValueError):  # ValueError covers JSON and decoding errors
+    except FileNotFoundError:
         pass
+    except (ValueError, OSError):  # ValueError covers JSON and decoding errors
+        saw_unusable = True
     if sys.platform == "darwin":
         blob = keychain_read(CODEX_KEYCHAIN_SERVICE, _codex_keychain_account())
         if blob:

@@ -115,8 +115,11 @@ class DependencyAnalyzer:
                 with open(toml_path, 'rb') as f:
                     self._pyproject_data = tomllib.load(f)
                 data = self._pyproject_data
-                has_poetry = ('tool' in data and 'poetry' in data['tool']
-                              and 'dependencies' in data['tool']['poetry'])
+                tool_table = data.get('tool')
+                poetry_table = (tool_table.get('poetry')
+                                if isinstance(tool_table, dict) else None)
+                has_poetry = (isinstance(poetry_table, dict)
+                              and 'dependencies' in poetry_table)
                 # A [project] table counts as PEP 621 when it declares either
                 # kind of dependency table; _parse_pep621 reads both, so a
                 # project with only optional-dependencies is not "unsupported".
@@ -131,7 +134,12 @@ class DependencyAnalyzer:
                     return 'pep621'
                 else:
                     return 'pyproject_unknown'
-            except Exception:
+            except (tomllib.TOMLDecodeError, OSError) as e:
+                self.issues.append({
+                    'type': 'parse_error',
+                    'severity': 'error',
+                    'message': f"Failed to parse pyproject.toml: {e}"
+                })
                 return 'pyproject_unknown'
         else:
             content = toml_path.read_text()
@@ -490,19 +498,26 @@ class DependencyAnalyzer:
         imports = set()
         try:
             content = file_path.read_text(encoding='utf-8', errors='ignore')
+            suffix = file_path.suffix.lower()
 
-            # Python imports
-            for match in re.finditer(r'^(?:from|import)\s+([\w.]+)', content, re.MULTILINE):
-                imports.add(match.group(1).split('.')[0])
-
-            # JS/TS imports
-            for match in re.finditer(r'(?:import|require)\s*\(?[\'"]([^\'"\s]+)[\'"]', content):
-                imp = match.group(1)
-                if imp.startswith('.') or imp.startswith('@/') or imp.startswith('~/'):
-                    # Relative import - extract first path component
-                    parts = imp.lstrip('./~@').split('/')
-                    if parts:
-                        imports.add(parts[0])
+            if suffix == '.py':
+                for match in re.finditer(
+                        r'^(?:from|import)\s+([\w.]+)', content, re.MULTILINE):
+                    imports.add(match.group(1).split('.')[0])
+            elif suffix in {'.js', '.jsx', '.ts', '.tsx', '.vue'}:
+                js_patterns = (
+                    r'(?:import|export)\s+[^\'"\n;]*?from\s*[\'"]([^\'"]+)[\'"]',
+                    r'(?:import|require)\s*\(?[\'"]([^\'"\s]+)[\'"]',
+                )
+                for pattern in js_patterns:
+                    for match in re.finditer(pattern, content):
+                        imp = match.group(1)
+                        if (imp.startswith('.') or imp.startswith('@/') or
+                                imp.startswith('~/')):
+                            # Relative import - extract first path component
+                            parts = imp.lstrip('./~@').split('/')
+                            if parts:
+                                imports.add(parts[0])
 
         except Exception:
             pass

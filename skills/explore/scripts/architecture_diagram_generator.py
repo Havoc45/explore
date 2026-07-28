@@ -41,24 +41,28 @@ class ProjectScanner:
 
     # Technologies identified by a source-file *extension*.  Matched against
     # ``Path.suffix`` exactly: react used to list the bare pattern ``jsx``,
-    # which the ``*{pattern}*`` glob below matched against any file name
+    # which the former ``*{pattern}*`` glob matched against any file name
     # merely containing those letters.
     TECH_EXTENSIONS = {
         'react': ('.jsx', '.tsx'),
+        'vue': ('.vue',),
     }
 
     # Technologies identified by a package-manifest dependency.
     TECH_DEPENDENCIES = {
         'react': {'react', 'react-dom', 'react-native'},
+        'vue': {'vue', 'nuxt'},
+        'node': {'express', 'fastify'},
     }
 
-    # File patterns for different technologies, matched against file names.
-    # ``package.json`` is a *node* signature only — listing it under react
-    # made every Node project a React project.
+    # File patterns for different technologies, matched against file names
+    # except for ``k8s``, which is matched as an exact directory name.
+    # ``package.json`` is a *node* signature only — listing it under react made
+    # every Node project a React project.
     TECH_PATTERNS = {
-        'vue': ['vue', 'nuxt.config'],
+        'vue': ['nuxt.config'],
         'angular': ['component.ts', 'module.ts', 'angular.json'],
-        'node': ['package.json', 'express', 'fastify'],
+        'node': ['package.json'],
         'python': ['requirements.txt', 'pyproject.toml', 'setup.py'],
         'go': ['go.mod', 'go.sum'],
         'rust': ['Cargo.toml'],
@@ -142,18 +146,28 @@ class ProjectScanner:
         imports = set()
         try:
             content = file_path.read_text(encoding='utf-8', errors='ignore')
+            suffix = file_path.suffix.lower()
 
-            # Python imports
-            py_imports = re.findall(r'^(?:from|import)\s+([\w.]+)', content, re.MULTILINE)
-            imports.update(py_imports)
-
-            # JS/TS imports
-            js_imports = re.findall(r'(?:import|require)\s*\(?[\'"]([^\'"\s]+)[\'"]', content)
-            imports.update(js_imports)
-
-            # Go imports
-            go_imports = re.findall(r'import\s+(?:\(\s*)?["\']([^"\']+)["\']', content)
-            imports.update(go_imports)
+            if suffix == '.py':
+                py_imports = re.findall(
+                    r'^(?:from|import)\s+([\w.]+)', content, re.MULTILINE)
+                imports.update(py_imports)
+            elif suffix in {'.js', '.jsx', '.ts', '.tsx', '.vue'}:
+                es_imports = re.findall(
+                    r'(?:import|export)\s+[^\'"\n;]*?from\s*[\'"]([^\'"]+)[\'"]',
+                    content)
+                imports.update(es_imports)
+                side_effect_imports = re.findall(
+                    r'(?:import|require)\s*\(?[\'"]([^\'"\s]+)[\'"]', content)
+                imports.update(side_effect_imports)
+            elif suffix == '.java':
+                java_imports = re.findall(
+                    r'^import\s+(?:static\s+)?([\w.]+)', content, re.MULTILINE)
+                imports.update(java_imports)
+            elif suffix == '.go':
+                go_imports = re.findall(
+                    r'import\s+(?:\(\s*)?["\']([^"\']+)["\']', content)
+                imports.update(go_imports)
 
         except Exception:
             pass
@@ -200,12 +214,31 @@ class ProjectScanner:
 
     def _detect_technologies(self):
         """Detect technologies used in the project."""
-        for tech, patterns in self.TECH_PATTERNS.items():
-            for pattern in patterns:
-                matches = list(self.project_path.rglob(f'*{pattern}*'))
-                if matches:
-                    self.technologies.add(tech)
-                    break
+        prefix_patterns = {
+            'nuxt.config', 'docker-compose', 'Dockerfile', 'build.gradle',
+        }
+        suffix_patterns = {
+            'component.ts', 'module.ts', 'deployment.yaml', 'service.yaml',
+        }
+        directory_patterns = {'k8s'}
+
+        for path in self.project_path.rglob('*'):
+            name = path.name
+            is_file = path.is_file()
+            is_dir = path.is_dir()
+            for tech, patterns in self.TECH_PATTERNS.items():
+                for pattern in patterns:
+                    if pattern in directory_patterns:
+                        matched = is_dir and name == pattern
+                    elif pattern in prefix_patterns:
+                        matched = is_file and name.startswith(pattern)
+                    elif pattern in suffix_patterns:
+                        matched = is_file and name.endswith(pattern)
+                    else:
+                        matched = is_file and name == pattern
+                    if matched:
+                        self.technologies.add(tech)
+                        break
 
         self._detect_technologies_by_extension()
 

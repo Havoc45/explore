@@ -450,7 +450,7 @@ class LayerViolationDetector:
 
                     # Extract imports
                     content = file_path.read_text(encoding='utf-8', errors='ignore')
-                    imports = self._extract_imports(content)
+                    imports = self._extract_imports(content, file_path.suffix)
 
                     # Check each import for layer violations
                     for imp in imports:
@@ -476,15 +476,20 @@ class LayerViolationDetector:
                 except Exception:
                     pass
 
-    def _extract_imports(self, content: str) -> List[str]:
+    def _extract_imports(self, content: str, suffix: str) -> List[str]:
         """Extract import statements."""
         imports = []
+        suffix = suffix.lower()
 
-        # Python imports
-        imports.extend(re.findall(r'^(?:from|import)\s+([\w.]+)', content, re.MULTILINE))
-
-        # JS/TS imports
-        imports.extend(re.findall(r'(?:import|require)\s*\(?[\'"]([^\'"\s]+)[\'"]', content))
+        if suffix == '.py':
+            imports.extend(re.findall(
+                r'^(?:from|import)\s+([\w.]+)', content, re.MULTILINE))
+        elif suffix in {'.js', '.jsx', '.ts', '.tsx', '.vue'}:
+            imports.extend(re.findall(
+                r'(?:import|export)\s+[^\'"\n;]*?from\s*[\'"]([^\'"]+)[\'"]',
+                content))
+            imports.extend(re.findall(
+                r'(?:import|require)\s*\(?[\'"]([^\'"\s]+)[\'"]', content))
 
         return imports
 
