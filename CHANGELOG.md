@@ -4,6 +4,51 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.16.7] — 2026-07-29
+
+### Fixed
+- **Analyzer + usage-probe correctness batch** (plan 019;
+  `scripts/architecture_diagram_generator.py`,
+  `scripts/dependency_analyzer.py`, `scripts/project_architect.py`,
+  `scripts/usage_probe.py`) — technology detection now matches exact
+  basenames / explicit prefixes (`nuxt.config*`, `docker-compose*`,
+  `Dockerfile*`, `build.gradle*`) / suffixes (`*.component.ts`,
+  `*-deployment.yaml`) / a directory named `k8s`, instead of
+  substring-matching every filename (`express-guide.md` no longer makes
+  a project "node"); `vue`/`express`/`fastify` moved to
+  manifest-dependency signals (the react precedent). Import extraction
+  is language-aware per file suffix and captures real ES module
+  specifiers (`import App from './app'` yields `./app`, never the
+  binding name `App` — fabricated identifiers previously invented
+  relationship edges); a `.java` arm keeps Java imports. A malformed
+  `pyproject.toml` now records a severity-`error` `parse_error` issue
+  (symmetric with `package.json`), with the poetry-table shape check
+  guarded so valid-TOML-wrong-shape (`[tool]` + `poetry = 5`) degrades
+  to `pyproject_unknown` instead of crashing. `usage_probe.py` labels an
+  existing-but-undecodable credentials file `credential_parse_error`
+  instead of `no_credentials` (missing store stays `no_credentials`).
+
+### Changed
+- **Computer-use flow and broad `--add-dir .git` fallback pinned on
+  codex 0.145.0** (plan 018; `references/delegation.md`) — the
+  packed-refs narrow-set failure (exit 128) and broad-root success were
+  reproduced live outside `/tmp`, and the workspace-write artifact-dir
+  skeleton verified with chrome-devtools and playwright MCP tools
+  enumerated in-session; both claims now carry version+date pins that
+  state exactly what the probes showed.
+- **Wrapper honesty sweep, v1.4.1** (plan 020;
+  `scripts/opencode-mcp.mjs`, `references/delegation.md`, `README.md`) —
+  the `/session/status` `{}`-while-generating notes no longer read as
+  "<=1.18.3" (the regression is proven on 1.18.6): all four comment
+  sites and the runtime `sessions_note` string state the verified
+  endpoints (1.18.3, still present on 1.18.6). The Node-24 undici
+  `setTypeOfService EINVAL` crash (observed once 2026-07-27, not
+  reproducible on demand, uncatchable in-process) is recorded at the
+  `api()` fetch helper and as an opencode-lane quirk, with the recovery
+  path hedged (client auto-restart where supported, else `/mcp`
+  reconnect; sessions persist on disk). README wrapper pin updated to
+  v1.4.1.
+
 ## [2.16.6] — 2026-07-27
 
 ### Fixed
