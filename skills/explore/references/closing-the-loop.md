@@ -55,6 +55,34 @@ Either lane, one executor at a time per plan.
 
 **Queued plans run on the critical path — one worktree each.** When several plans are dispatch-ready, first order the queue: dependency edges, then priority, then leverage (`delegation.md` "Big queues run on the critical path"). Then parallelize the *independent* ones in that order: no dependency edges between them in `plans/README.md`, and pairwise-disjoint in-scope paths. Each gets its own executor in its own worktree/branch (worktree path `<plan-id>-<model>`, per the labeling rule in `delegation.md`), CLI lanes staffed first (quota preservation), total concurrency bounded by the `--depth` cap. Overlapping scope or a dependency edge → sequence those; when in doubt, sequence. Reviews are rendered serially by the advisor as each executor reports — dispatch parallelizes, judgment doesn't.
 
+### Queued-plans pipeline
+
+Three standing rules for a multi-plan execution session: parallel is the default, every plan gets a dry-run probe first, and questions never idle the queue while the operator is away.
+
+- **Parallel is the default, not an option.** When **≥3 queued plans** are executable with **pairwise-disjoint in-scope paths** and **no dependency edges** between them, the run parallelizes them through the harness's dynamic-workflow surface — on Claude Code the `Workflow` tool, on a harness without one plain parallel lane dispatches — one isolated worktree per plan, waves ordered by dependency edges. The operator's "execute these plans" instruction is itself the orchestration opt-in — no separate ask; the kickoff line says so in one sentence. Overlapping scopes or dependency edges still sequence (`delegation.md` "Big queues run on the critical path"); when in doubt, sequence.
+
+- **Dry-run execution probe.** Before wave 1, per queued plan: dispatch one cheap read-only worker (roster smol-tier / cheapest eligible lane model) with the full plan text inlined plus the list of files the plan touches; it reads those files at HEAD and returns **only** ambiguities in the plan, contradictions between the plan and HEAD, judgment calls the plan leaves to the executor, and the questions an executor would raise mid-run. That list is surfaced to the operator **before** dispatch — the whole point is front-loading questions while the operator is still present. Skip the probe for S-effort docs-only plans. Probe brief:
+
+  ```
+  You are a read-only probe worker. Work only inside <repo/worktree root>;
+  read nothing outside it, write nothing anywhere.
+
+  Raise your hand: "If, from what you can see, the plan appears mis-aimed —
+  a file doesn't do what the plan assumes, the approach contradicts what
+  you find — STOP and say so. Do not complete a task you can see is
+  pointed wrong."
+
+  Below: the full plan text and the list of files it touches. Read those
+  files at HEAD. Return ONLY:
+  1. Ambiguities in the plan
+  2. Contradictions between the plan and HEAD
+  3. Judgment calls the plan leaves to the executor
+  4. Questions an executor would raise mid-run
+  Return NOTHING else.
+  ```
+
+- **AFK question policy + defer-and-handoff.** At execution kickoff — once per execution session — one `AskUserQuestion` (where the harness exposes one; a non-interactive run notes "afk policy: not asked" in the run record and continues): *may the orchestrator auto-approve recommended answers for **non-critical** questions while the operator is away, recording every auto-approval in the run record, pausing only for critical/major ones?* The line: **non-critical** = does not change scope, security posture, public behavior, or data; everything else is **major**. Persist the answer for the session; if a project staffing record (previous subsection) exists, record it there too. A **major** question with the operator absent parks that plan and its dependents as `BLOCKED(question)` in the run record, keeps independent plans running, and at session end the close-out lists the deferred plans and their open questions **first**. Auto-approval of critical questions: **never**.
+
 ### Project staffing record
 
 A per-project record of **which models the orchestrator uses as Executor and Verifier for this repo** — one ask, persisted, then read silently on every later run. It does **not** pin a model to a plan (an explicit `--execute-level <plan:model>` pin always wins); it replaces the **default** staffing for the two roles the rung table names ("Rung staffing with the roster" in `delegation.md`), so a project that prefers, say, glm-5.2 as executor and opus-5 as verifier records that once instead of restating it per dispatch. The record is consulted during recon (Phase 1 — see SKILL.md) and the chosen ids flow into every later dispatch/verifier pick unless overridden.
