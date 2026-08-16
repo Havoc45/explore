@@ -1,7 +1,7 @@
 {
   "name": "explore",
   "version": "2.17.0",
-  "description": "Explore, understand, and improve a codebase as a read-only senior architect-advisor, driven by feature flags. Charts a durable system design reference (diagrams, ADRs, risk map) by default; flags add audit-and-plan (--improve), single-task planning (--plan-once), security review (--security), plan review (--review), executor dispatch (--execute-level), and budget-aware resumable runs (--sub-continuous) \u2014 tunable with --depth, --verbosity, --caveman, and --model.",
+  "description": "Read-only senior architect-advisor: charts a codebase into a durable system design reference (diagrams, ADRs, risk map); feature flags add audit-and-plan, single-task planning, security review, plan review, executor dispatch, backlog reconcile, agent-context init, first-run setup, and budget-aware resumable runs.",
   "author": {
     "name": "Havoc45",
     "url": "https://github.com/Havoc45"

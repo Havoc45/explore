@@ -1,7 +1,7 @@
 {
   "name": "explore",
   "version": "2.17.0",
-  "description": "Read-only senior architect-advisor skill: system design reference, audits, and executable plans",
+  "description": "Read-only senior architect-advisor: charts a codebase into a durable system design reference (diagrams, ADRs, risk map); feature flags add audit-and-plan, single-task planning, security review, plan review, executor dispatch, backlog reconcile, agent-context init, first-run setup, and budget-aware resumable runs.",
   "keywords": [
     "pi-package",
     "architecture",

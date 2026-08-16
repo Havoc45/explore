@@ -1,3 +1,5 @@
+> **ARCHIVED — frozen v2.11.0 snapshot (2026-07-08); superseded by `skills/explore/SKILL.md` + `references/` + `CHANGELOG.md`; excluded from version lockstep; kept for history, referenced by nothing operational.**
+
 # HANDOVER — `explore` skill/plugin
 
 > **Frozen snapshot — written at v2.11.0 (2026-07-08).** Operational truth lives in `skills/explore/SKILL.md`, its `references/`, and `CHANGELOG.md`; the sections below are historical.
