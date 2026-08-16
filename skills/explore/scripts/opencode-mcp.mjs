@@ -395,7 +395,8 @@ async function ensureServer() {
 // `setTypeOfService EINVAL` process crash. No in-process handler can trap it;
 // recovery is a wrapper respawn — the MCP client's auto-restart where the
 // harness does that, otherwise a manual reconnect (e.g. /mcp). Persisted
-// sessions remain on disk. Upstream issue candidate.
+// sessions remain on disk. Upstream: nodejs/undici#5544, fixed by PR #5547 —
+// resolved once the host Node bundles that undici; until then this note stands.
 async function api(method, path, { directory, body, timeoutMs } = {}) {
   const url = new URL(BASE + path);
   if (directory) url.searchParams.set("directory", directory);
