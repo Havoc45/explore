@@ -141,7 +141,7 @@ Situation → fragment pointer pairs for contingencies the executor might hit
 but the happy path won't. The executor pulls the fragment on encounter instead
 of the plan inlining every branch:
 
-- wrapper/transport misbehaves → `references/delegation.md` "Stale-transport
+- wrapper/transport misbehaves → `references/delegation-transports.md` "Stale-transport
   failure shapes and refresh"
 - <situation specific to this plan> → <fragment path or path §section>
 

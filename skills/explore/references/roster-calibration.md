@@ -8,7 +8,7 @@ A short, consent-gated **probe** run that *suggests* Cost/Intelligence/Taste val
 
 **Supported lanes only:** codex, opencode, and the host's own native dispatch. A lane with no verified dispatch shape cannot be probed; its models take the **defaults** or **manual** path in `setup.md` instead.
 
-**Dispatch invocations are cited by pointer, never invented.** Use the verified shapes for the model's lane in `references/delegation.md` — "Shell command shapes" for the shell transport, "MCP call shapes" for MCP. A lane whose shape is not written there is not calibratable.
+**Dispatch invocations are cited by pointer, never invented.** Use the verified shapes for the model's lane in `references/delegation-transports.md` — "Shell command shapes" for the shell transport, "MCP call shapes" for MCP. A lane whose shape is not written there is not calibratable.
 
 ## The axes, honestly
 

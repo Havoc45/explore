@@ -7,3 +7,7 @@ AGENTS.md
 
 # python bytecode (usage_probe.py imports)
 __pycache__/
+
+# google-cloud-sdk/ — regrowth cause is external: a gcloud/python process
+# caching into the repo cwd; nothing in this repo references or needs it
+google-cloud-sdk/

@@ -74,6 +74,41 @@ declared_files() {
   python3 -c 'import json,sys; [print(f["path"], f["field"], sep="\t") for f in json.load(open(sys.argv[1]))["files"]]' "$CONFIG"
 }
 
+# Report-only drift check: print a WARNING when the manifests' description
+# strings are not all identical after trimming whitespace. Never affects the
+# exit code — audit's version-string semantics are unchanged.
+check_description_drift() {
+  python3 - "$REPO_ROOT" <<'PY'
+import json, sys
+root = sys.argv[1]
+mans = [
+    (".claude-plugin/plugin.json", "description"),
+    (".claude-plugin/marketplace.json", "plugins.0.description"),
+    (".codex-plugin/plugin.json", "description"),
+    (".cursor-plugin/plugin.json", "description"),
+    (".kimi-plugin/plugin.json", "description"),
+    ("gemini-extension.json", "description"),
+    ("package.json", "description"),
+]
+descs = {}
+for path, field in mans:
+    try:
+        obj = json.load(open(f"{root}/{path}", encoding="utf-8"))
+        for part in field.split("."):
+            obj = obj[int(part)] if part.isdigit() else obj[part]
+        descs[path] = obj.strip()
+    except Exception as e:
+        descs[path] = f"<unreadable: {e}>"
+uniq = set(descs.values())
+if len(uniq) > 1:
+    print("WARNING: manifest description drift — the 7 manifests' description strings are not all identical (report-only; audit exit code unchanged):")
+    for path, d in descs.items():
+        print(f"  {path}: {d[:80]}{'...' if len(d) > 80 else ''}")
+else:
+    print("Manifest descriptions: all 7 identical.")
+PY
+}
+
 audit_excludes() {
   python3 -c 'import json,sys; [print(p) for p in json.load(open(sys.argv[1])).get("audit",{}).get("exclude",[])]' "$CONFIG"
 }
@@ -237,6 +272,9 @@ cmd_audit() {
     echo "Review the above — bumpable files belong in .version-bump.json's files list,"
     echo "historical/record files (e.g. changelogs) in its audit.exclude list."
   fi
+
+  echo ""
+  check_description_drift
 
   if [[ "$check_status" -ne 0 || "$found_undeclared" -ne 0 ]]; then
     return 1

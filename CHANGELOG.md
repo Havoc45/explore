@@ -4,6 +4,13 @@ All notable changes to the `explore` plugin. This project adheres to
 [Semantic Versioning](https://semver.org/) and the spirit of
 [Keep a Changelog](https://keepachangelog.com/).
 
+> **Prune policy.** Keep the last ~10 releases in this root file; when older
+> releases scroll past that window, archive them to `docs/CHANGELOG-archive.md`
+> (newest-archived first) rather than deleting them, so this file stays a
+> readable recent-history view and the full record stays in the repo. Policy
+> only — no prune has been applied yet, and `docs/CHANGELOG-archive.md` is
+> created on the first archival, not before.
+
 ## [2.16.7] — 2026-07-29
 
 ### Fixed

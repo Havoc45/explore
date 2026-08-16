@@ -34,4 +34,4 @@ MCP is the dispatch default — shell review runs have stalled with zero output 
 - **Shell lifetime.** macOS has no `timeout(1)`; harness shell caps kill long runs; raw `&` orphans them. Shell dispatches run via the harness's background mechanism, output as the completion signal.
 - **Host-plugin junk.** The host plugin `oh-my-openagent` drops `.codegraph` and `.omo/` at the session root on every dispatch; note their presence in your report so the orchestrator sweeps them before diff review.
 
-Full lane doctrine (roster, effort mapping, preflight probe, stale-transport refresh): `${CLAUDE_PLUGIN_ROOT}/skills/explore/references/delegation.md` — consult only when the brief conflicts with a shape above.
+Full lane doctrine (effort mapping, verified call shapes, lane quirks, stale-transport refresh): `${CLAUDE_PLUGIN_ROOT}/skills/explore/references/delegation-transports.md`; roster and preflight probe: `${CLAUDE_PLUGIN_ROOT}/skills/explore/references/delegation.md` — consult only when the brief conflicts with a shape above.
