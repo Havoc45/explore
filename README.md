@@ -143,7 +143,7 @@ claude mcp add --scope user codex -- codex mcp-server
 claude mcp add --scope user opencode -- node <explore-repo>/skills/explore/scripts/opencode-mcp.mjs
 ```
 
-The vendored `opencode-mcp.mjs` wrapper (zero-dep Node) auto-starts `opencode serve` and exposes seven tools (`opencode_run` / `opencode_fire` / `opencode_status` / `opencode_wait` / `opencode_steer` / `opencode_abort` / `opencode_health`). Without any registration, the skill falls back to `codex exec --json` / `opencode run --format json` shell runs — same roster, same confinement rules. Mechanics — including the per-shape transport verification pins (currently codex CLI 0.145.0; opencode CLI and serve 1.18.6; wrapper v1.4.1) — live in `skills/explore/references/delegation.md`.
+The vendored `opencode-mcp.mjs` wrapper (zero-dep Node) auto-starts `opencode serve` and exposes seven tools (`opencode_run` / `opencode_fire` / `opencode_status` / `opencode_wait` / `opencode_steer` / `opencode_abort` / `opencode_health`), and flags a stalled minion on `opencode_status` / `opencode_wait` with `possible_hang` / `in_flight_age_s` / `pending_permission` when an in-flight turn goes silent past the stall threshold — report-only, the usual cause being a read outside the session root. Without any registration, the skill falls back to `codex exec --json` / `opencode run --format json` shell runs — same roster, same confinement rules. Mechanics — including the per-shape transport verification pins (currently codex CLI 0.145.0; opencode CLI and serve 1.18.6; wrapper v1.5.0) — live in `skills/explore/references/delegation.md`.
 
 ## First-run setup
 

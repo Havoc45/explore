@@ -14,6 +14,8 @@
  *   OPENCODE_HOST      hostname (default 127.0.0.1)
  *   OPENCODE_API_TIMEOUT_MS  cap on API calls (default 30000 = 30s)
  *   OPENCODE_RUN_TIMEOUT_MS  cap on blocking runs (default 1200000 = 20 min)
+ *   OPENCODE_STALL_WARN_S    in-flight age before the stall watchdog fires
+ *                            (default 300 = 5 min)
  *
  * The wrapper auto-starts `opencode serve` if nothing answers on the port,
  * and leaves it running (an idle server is cheap; kill it manually if
@@ -33,13 +35,14 @@ import {
 import { tmpdir } from "node:os";
 import { createInterface } from "node:readline";
 
-const VERSION = "1.4.1";
+const VERSION = "1.5.0";
 const PORT = Number(process.env.OPENCODE_PORT || 4096);
 const DEFAULT_HOST = "127.0.0.1";
 const HOST = process.env.OPENCODE_HOST || DEFAULT_HOST;
 const BASE = `http://${HOST}:${PORT}`;
 const RUN_TIMEOUT_MS = Number(process.env.OPENCODE_RUN_TIMEOUT_MS || 1_200_000);
 const DEFAULT_API_TIMEOUT_MS = Number(process.env.OPENCODE_API_TIMEOUT_MS || 30_000);
+const STALL_WARN_S = Number(process.env.OPENCODE_STALL_WARN_S || 300);
 const HEAL_LOCK_DIR = `${tmpdir()}/opencode-mcp-heal-${PORT}.lock`;
 const HEAL_LOCK_OWNER = `${HEAL_LOCK_DIR}/owner.pid`;
 
@@ -526,6 +529,30 @@ async function createSession({ directory, title, parent_session_id }) {
   return s.id;
 }
 
+// Freshest epoch-ms stamp anywhere in one message record. Shapes verified on
+// serve 1.18.18, 2026-08-16: `info.time` = {created, completed?}; text parts
+// carry `time` = {start, end?}; tool parts carry `state.time` = {start, end?}.
+// A turn that is thinking, streaming, or sitting in a tool call keeps moving
+// one of these; a turn blocked on a permission ask stops moving all of them —
+// which is what makes the max a usable in-flight age.
+function newestActivityMs(msg) {
+  if (!msg) return null;
+  let newest = null;
+  const consider = (t) => {
+    if (typeof t === "number" && Number.isFinite(t) && (newest === null || t > newest)) newest = t;
+  };
+  const considerTime = (time) => {
+    if (!time || typeof time !== "object") return;
+    for (const value of Object.values(time)) consider(value);
+  };
+  considerTime(msg.info?.time);
+  for (const part of msg.parts || []) {
+    considerTime(part.time);
+    considerTime(part.state?.time);
+  }
+  return newest;
+}
+
 async function readMessages(sessionID, directory, timeoutMs) {
   // `|| []`: a null/204 body would otherwise TypeError on .length below.
   const msgs = (await api("GET", `/session/${sessionID}/message`, { directory, timeoutMs })) || [];
@@ -560,7 +587,54 @@ async function readMessages(sessionID, directory, timeoutMs) {
   // {} for busy sessions — verified on opencode 1.18.3, still present on
   // 1.18.6 (latest verified); this is the reliable running signal).
   const streaming = isAssistant && !done;
-  return { last, replied, streaming };
+  // Read off the record we already fetched — no extra request, so the stall
+  // watchdog costs nothing on the common path.
+  const lastActivityMs = newestActivityMs(newest);
+  return { last, replied, streaming, lastActivityMs };
+}
+
+// ---------- in-flight stall watchdog (report-only) ----------
+
+// Why this exists — verified live on `opencode serve` 1.18.15, 2026-08-16
+// (routes re-confirmed on 1.18.18): a minion asked to read a path OUTSIDE its
+// session `directory` trips an `external_directory` permission ask that no one
+// is there to answer. The turn then hangs PERMANENTLY at `read:running` with
+// `running: true`, `replied: false`, `cost: 0`, while `opencode_health` reports
+// healthy the whole time — nothing in the health surface distinguishes it from
+// a slow model. `GET /session/{id}` is no help either: its pending/permissions
+// fields are both null. The ONLY visibility is the global queue:
+//   GET /permission?directory=<session root>
+//     -> [{ id, sessionID, permission: "external_directory",
+//           patterns: ["/outside/path/*"], metadata: { filepath, parentDir },
+//           tool: { messageID, callID } }]
+// CRITICAL: the queue is directory-scoped — without `?directory=` the endpoint
+// returns `[]` no matter how many asks are pending.
+//
+// Report-only by construction. `POST /permission/{requestID}/reply` and
+// `POST /session/{sessionID}/permissions/{permissionID}` exist and could
+// approve or deny the ask; the wrapper calls NEITHER. Auto-approving an
+// out-of-root read would silently widen a minion's blast radius past the
+// confinement its brief promised, and auto-denying would decide for the
+// orchestrator. The watchdog names the problem and stops there.
+async function stallWatch({ sessionID, directory, running, lastActivityMs }) {
+  if (!running || typeof lastActivityMs !== "number") return null;
+  const inFlightAgeS = Math.max(0, Math.round((Date.now() - lastActivityMs) / 1000));
+  if (inFlightAgeS < STALL_WARN_S) return null;
+  const watch = { possible_hang: true, in_flight_age_s: inFlightAgeS };
+  try {
+    const queue = await api("GET", "/permission", { directory, timeoutMs: 5000 });
+    const asks = Array.isArray(queue) ? queue : [];
+    const match = asks.find((ask) => ask?.sessionID === sessionID);
+    watch.pending_permission = match
+      ? { permission: match.permission, patterns: match.patterns }
+      : null;
+  } catch (err) {
+    // A watchdog that can break the call it is watching is worse than no
+    // watchdog: swallow everything and report the probe failure as data.
+    watch.pending_permission = null;
+    watch.permission_probe_error = String(err?.message || err);
+  }
+  return watch;
 }
 
 async function promptSync(sessionID, { directory, prompt, model, agent, variant }) {
@@ -643,7 +717,7 @@ const TOOLS = [
   {
     name: "opencode_status",
     description:
-      "Heartbeat for a fired session: whether it is still running, the last assistant text so far, tool calls, and any error.",
+      "Heartbeat for a fired session: whether it is still running, the last assistant text so far, tool calls, and any error. A turn in flight with no activity for OPENCODE_STALL_WARN_S (default 300s) also reports possible_hang / in_flight_age_s / pending_permission.",
     inputSchema: {
       type: "object",
       properties: {
@@ -656,7 +730,7 @@ const TOOLS = [
   {
     name: "opencode_wait",
     description:
-      "Block until a fired session has answered its last prompt (idle + replied), then return the final assistant text. timeout_s caps the wait (default 600); on timeout it reports the live state instead of failing.",
+      "Block until a fired session has answered its last prompt (idle + replied), then return the final assistant text. timeout_s caps the wait (default 600); on timeout it reports the live state instead of failing — plus possible_hang / in_flight_age_s / pending_permission when the turn has been in flight and silent past the stall threshold.",
     inputSchema: {
       type: "object",
       properties: {
@@ -810,12 +884,18 @@ async function callTool(name, args) {
     }
     case "opencode_status": {
       const statusBusy = await retryFirstApiCall(() => isRunning(args.session_id, directory));
-      const { last, replied, streaming } = await readMessages(args.session_id, directory);
+      const { last, replied, streaming, lastActivityMs } =
+        await readMessages(args.session_id, directory);
+      const running = statusBusy || streaming;
+      const watch = await stallWatch({
+        sessionID: args.session_id, directory, running, lastActivityMs,
+      });
       return {
         session_id: args.session_id,
-        running: statusBusy || streaming,
+        running,
         replied,
         last,
+        ...(watch || {}),
         ...common,
       };
     }
@@ -834,7 +914,8 @@ async function callTool(name, args) {
           ? await retryFirstApiCall(() => isRunning(args.session_id, directory))
           : await isRunning(args.session_id, directory);
         firstStatus = false;
-        const { last, replied, streaming } = await readMessages(args.session_id, directory);
+        const { last, replied, streaming, lastActivityMs } =
+          await readMessages(args.session_id, directory);
         const running = statusBusy || streaming;
         if (!running && replied) {
           return { session_id: args.session_id, running: false, replied, last, ...common };
@@ -859,12 +940,19 @@ async function callTool(name, args) {
           };
         }
         if (Date.now() >= deadline) {
+          // The wait budget expired with the turn still in flight — the one
+          // return where a permanent permission hang and honest slow work look
+          // identical. The watchdog is what tells them apart.
+          const watch = await stallWatch({
+            sessionID: args.session_id, directory, running, lastActivityMs,
+          });
           return {
             session_id: args.session_id,
             running,
             replied,
             timed_out: true,
             last,
+            ...(watch || {}),
             ...common,
           };
         }
