@@ -1,6 +1,6 @@
 # Model roster — shipped defaults & per-model calibration
 
-The score table and per-model behavioural notes behind `references/delegation.md` "The model roster & routing". The routing rules, lane mechanics, and the user-roster override live there; this file is only *which models, at what scores, with what observed habits*. A valid saved roster (`${XDG_CONFIG_HOME:-$HOME/.config}/explore/roster.json`) is authoritative over everything below — read the file, not this table, whenever it exists (`delegation.md` "User roster override").
+The score table and per-model behavioural notes behind `references/delegation.md` "The model roster & routing". The routing rules, lane mechanics, and the user-roster override live there; this file is only *which models, at what scores, with what observed habits*. A valid saved roster (`${XDG_CONFIG_HOME:-$HOME/.config}/explore/roster.json`) is authoritative over everything below — read the file, not this table, whenever it exists (`delegation.md` "User roster override"). A saved roster may also carry an optional **role profile** (`optimizations.omp_roles`): named `plan` / `slow` / `smol` roles that staffing resolves through instead of raw C/I/T (`delegation.md` "Role profile"). It is configured by the "Token optimization (OMP-style roles)" step of the `--setup-plugin` wizard (`setup.md`).
 
 **Haiku is never staffed** — routing rule 8 in `delegation.md` binds regardless of what any table or saved roster says; do not add Haiku to a roster.
 

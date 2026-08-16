@@ -15,9 +15,9 @@ Rules that hold on both paths:
 
 - **One decision per question.** A question that bundles two decisions gets split into two.
 - **Overflow rule.** When a choice has more options than the tool can hold (more than 4 supplied options on Claude Code — the UI's own "Other" is added on top and never consumes a slot), either split it into consecutive questions with "more choices…" as the last option, or drop that one question to a plain-text numbered list. **Never silently truncate the option set** — the user must be able to reach every option.
-- **Single-candidate rule** (the overflow rule's mirror). Structured question tools can require **at least 2 supplied options** (AskUserQuestion rejects a 1-option question outright — live-hit 2026-07-27). A choice with exactly one known-good candidate still gets a selector: pair the candidate with the second option **"choose a different id from the inventory shown above"** (free-text entry) — a real alternative action, never a padded or invented model id. Only when there is no inventory to choose from either is the choice stated as the taken path in the response and confirmed at the summary (Step 6).
+- **Single-candidate rule** (the overflow rule's mirror). Structured question tools can require **at least 2 supplied options** (AskUserQuestion rejects a 1-option question outright — live-hit 2026-07-27). A choice with exactly one known-good candidate still gets a selector: pair the candidate with the second option **"choose a different id from the inventory shown above"** (free-text entry) — a real alternative action, never a padded or invented model id. Only when there is no inventory to choose from either is the choice stated as the taken path in the response and confirmed at the summary (Step 7).
 - **Consent and cost are plain full sentences** (auto-clarity), on every harness, even where the surrounding prose is terse.
-- **Render-before-ask.** Any list or table the user needs in order to answer — a lane's model inventory, the C/I/T table, the Step-6 summary — is rendered in the assistant's **own response text**, never left inside a raw tool result (harness UIs collapse those) and never only *referenced* ("see above"). **Harness reality (live-hit three rounds): response text sandwiched between tool calls in one turn may never be shown** — a render followed by a structured question call in the same turn loses the render. So a render and its question are split **across the turn boundary, never across a tool call**: the response **ends** with the render plus the inviting line — worded exactly: *reply with your picks directly, or reply anything (e.g. "ask") to open the selectors* — if the reply already carries the answer, accept it (fast path); otherwise open the **structured selector as the next turn's first action**, directly under the render in the transcript. **No exceptions — settled by experiment (2026-07-27, four live failures including a dedicated attempt on both the first and last gates): a selector called in the same turn as a render always loses the render**, wherever it sits in the turn. Auto-opening a selector under a visible render is impossible on this harness; the turn boundary is the only mechanism that guarantees the render displays. Every render-dependent question therefore uses the invite flow above, first and last included. Self-contained questions (billing, consent) use the structured tool directly. Plain-text numbered questions remain the no-structured-tool fallback.
+- **Render-before-ask.** Any list or table the user needs in order to answer — a lane's model inventory, the C/I/T table, the Step-7 summary — is rendered in the assistant's **own response text**, never left inside a raw tool result (harness UIs collapse those) and never only *referenced* ("see above"). **Harness reality (live-hit three rounds): response text sandwiched between tool calls in one turn may never be shown** — a render followed by a structured question call in the same turn loses the render. So a render and its question are split **across the turn boundary, never across a tool call**: the response **ends** with the render plus the inviting line — worded exactly: *reply with your picks directly, or reply anything (e.g. "ask") to open the selectors* — if the reply already carries the answer, accept it (fast path); otherwise open the **structured selector as the next turn's first action**, directly under the render in the transcript. **No exceptions — settled by experiment (2026-07-27, four live failures including a dedicated attempt on both the first and last gates): a selector called in the same turn as a render always loses the render**, wherever it sits in the turn. Auto-opening a selector under a visible render is impossible on this harness; the turn boundary is the only mechanism that guarantees the render displays. Every render-dependent question therefore uses the invite flow above, first and last included. Self-contained questions (billing, consent) use the structured tool directly. Plain-text numbered questions remain the no-structured-tool fallback.
 
 ## Wizard Step 1 — Detect
 
@@ -64,7 +64,32 @@ Record every answer. Billing feeds two things: the Cost axis (`references/roster
 
 **Completion criterion:** every enabled lane, host included, has a recorded billing value.
 
-## Wizard Step 4 — Models per lane
+## Wizard Step 4 — Token optimization (OMP-style roles)
+
+An optional optimization profile that pins three **roles** onto the roster the wizard is building — a `plan` model for architectural planning, a `slow` model for thorough analysis, and a `smol` model for cheap mechanical execution, with two dispatch doctrines (`prewalk`, `plan-yolo`) on top — ported from OMP's role-based model routing (OMP v17.3.4). It changes only which *saved* model each rung resolves to by default; every routing rule, floor, and the escalation ladder in `references/delegation.md` bind unchanged.
+
+One self-contained consent question opens the step — **enable the optimization profile, or skip it** (self-contained, so the structured tool is used directly, no render needed):
+
+- **skip** — record nothing; the step is over and the roster saves exactly as it would have without this step. The default.
+- **enable** — ask the three questions below, then write the `optimizations` block at save time ("Persistence" below).
+
+**Re-run prefill (this step's one exception to the generic rule).** When the existing roster already carries `optimizations.omp_roles`, this step's question does **not** default to the saved answers. Its text shows *"optimization profile applied on `<applied_at>` — re-apply?"* with **re-apply** / **leave as-is** / **remove**; **leave as-is** is the default, and the wizard **never silently re-applies**. Only an explicit re-apply refreshes `applied_at` and the answers.
+
+**1. The role mapping** (enable path only). Three independent decisions — **one per question, per the one-decision rule** — each offered as a selector over the lane/model inventory already detected and recorded in Steps 1–3, applied to the shipped defaults (the wizard renders that mapping as response text before asking):
+
+- **`plan` →** the **highest-Intelligence enabled model** — breaks a tie on the higher Taste, then the higher Cost.
+- **`slow` →** the same model as `plan`, or the **next tier down** — the user's pick.
+- **`smol` →** the **cheapest enabled lane model** — the highest-Cost row across the enabled lanes. **Never Haiku — that floor is hard**, no matter what the operator's inventory holds (`references/delegation.md` routing rule 8 binds here exactly as it binds staffing).
+
+Where the mapping leaves a single candidate, the single-candidate rule applies ("Question mechanics"); never pad a selector with invented ids.
+
+**2. `prewalk`** (enable path only). One consent question, in plain full sentences: with `prewalk` on, plans are **authored at the `plan`-role tier** and executors **default to the `smol`-role tier** unless the plan is taste-sensitive — the expensive model plans, the cheap model executes.
+
+**3. `plan-yolo`** (enable path only). One consent question, in plain full sentences: on `--plan-once`, **and only with explicit per-run consent at that run**, the harness auto-approves the plan the moment the planning model resolves it and auto-dispatches the `smol`-role executor. Enabling the toggle here only *permits* that per-run consent to be asked; it never grants it in advance.
+
+**Completion criterion:** the step is recorded as skipped, or three role answers (a lane + dispatchable model id each) plus the two boolean toggles are recorded, carrying the user's explicit enable consent.
+
+## Wizard Step 5 — Models per lane
 
 Take the inventory for each enabled lane with **verified commands only**:
 
@@ -89,7 +114,7 @@ The chosen set per lane is that lane's **roster candidates**. Record each candid
 
 **Completion criterion:** every enabled lane has at least one candidate recorded by dispatchable id.
 
-## Wizard Step 5 — C/I/T values
+## Wizard Step 6 — C/I/T values
 
 One question, three paths.
 
@@ -106,7 +131,7 @@ After any path: one response ends with the rendered table — **model / lane / C
 
 **Completion criterion:** every candidate carries three axis values (integer or `null`) plus a provenance, and the user has confirmed the table.
 
-## Wizard Step 6 — Summary, confirm, persist
+## Wizard Step 7 — Summary, confirm, persist
 
 One response ends with the full setup rendered — host, mode, lanes with billing, the complete roster table with provenance, and the config path that will be written — plus the inviting line: *reply save / redo <step> / discard directly, or reply anything (e.g. "ask") to open the selector*. The selector opens on a non-answer reply, sitting under the render; the user decides against the roster they can actually see.
 
@@ -144,6 +169,21 @@ One response ends with the full setup rendered — host, mode, lanes with billin
 
 **Field types.** `cost`, `intelligence`, and `taste` are each an **integer 1–10 or `null`**. `null` means that axis is unscored — an unmatched default, or a failed calibration probe. A model with any `null` axis is **staffed conservatively — worker rung only, never user-facing work** — until the user fills it in (a manual edit, or a `--setup-plugin` re-run). `provenance` is one of `default` | `manual` | `calibrated` | `unscored`, per row: `unscored` when all three axes are `null`, otherwise the path that produced the values.
 
+**The `optimizations` key is OPTIONAL — the schema stays v1.** Written only when the user explicitly enables the profile in Step 4, it is one additive top-level key beside `roster`:
+
+```json
+"optimizations": {
+  "omp_roles": {
+    "applied_at": "<ISO-8601 timestamp>",
+    "roles": { "plan": "<model>", "slow": "<model>", "smol": "<model>" },
+    "prewalk": true,
+    "plan_yolo": false
+  }
+}
+```
+
+Each role value is a **dispatchable model id from the roster just saved**, resolving to its lane + model at run time (`references/delegation.md` "Role profile"). **Readers must ignore unknown keys, this one included**: a reader that pre-dates the profile treats the file as an ordinary v1 roster, and a roster without `optimizations` is unchanged-valid — nothing about loading, validation, or cross-harness fallback differs. `applied_at` is what Step 4's re-run prefill shows ("optimization profile applied on `<applied_at>` — re-apply?").
+
 **Lane ids are harness-qualified** — `claude-code`, `codex`, `opencode`, `pi`, … — never a bare `native`. At load time the lane whose `id` equals the current host dispatches natively; other lanes dispatch through their CLI when it is present; a lane whose CLI is absent on this machine is skipped with a one-line note.
 
 **Cross-harness loading.** `host` records which harness ran the wizard; the file serves every harness. A harness loading a roster it did not write resolves lanes by id per the rule above. If that leaves **no usable lane** — e.g. a native-only roster written on a different harness, whose id matches nothing local — fall back to the shipped defaults for the run, say so in one line, and suggest re-running `--setup-plugin` here.
@@ -157,6 +197,6 @@ One response ends with the full setup rendered — host, mode, lanes with billin
 - A `schema` **greater** than this reference's known version → **do not rewrite the file**; tell the user to re-run setup on the newer plugin.
 - **Unknown keys are preserved on rewrite.**
 
-**Re-run prefill.** When a valid roster already exists, every wizard question defaults to the saved answer.
+**Re-run prefill.** When a valid roster already exists, every wizard question defaults to the saved answer — with one deliberate exception: Step 4's optimization-profile question shows the applied-on date and asks *re-apply?* rather than silently re-applying (Step 4).
 
 **Calibration transcripts** land beside the roster under `calibration/` (see `references/roster-calibration.md`), moved in from the staging directory at save time.

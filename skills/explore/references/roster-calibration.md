@@ -1,10 +1,10 @@
 # Roster calibration — probing C/I/T for the user's own models
 
-Reached from `references/setup.md` Wizard Step 5, the **calibrate** path, and only after its consent gate.
+Reached from `references/setup.md` Wizard Step 6, the **calibrate** path, and only after its consent gate.
 
 ## What calibration is
 
-A short, consent-gated **probe** run that *suggests* Cost/Intelligence/Taste values for the models the user chose. The suggestions are advisory, never verdicts — the user confirms every value back in `setup.md` Step 5 before anything is saved.
+A short, consent-gated **probe** run that *suggests* Cost/Intelligence/Taste values for the models the user chose. The suggestions are advisory, never verdicts — the user confirms every value back in `setup.md` Step 6 before anything is saved.
 
 **Supported lanes only:** codex, opencode, and the host's own native dispatch. A lane with no verified dispatch shape cannot be probed; its models take the **defaults** or **manual** path in `setup.md` instead.
 
@@ -84,7 +84,7 @@ The lane doctrine binds every probe dispatch: label it with its **true model and
 
 Per model: the suggested values — any failed axis as `null` — with provenance `calibrated`.
 
-**Transcripts**, one per probe, are written **first to the wizard's staging directory** (`setup.md` Step 6 — nothing touches the config home before save), then moved on save to:
+**Transcripts**, one per probe, are written **first to the wizard's staging directory** (`setup.md` Step 7 — nothing touches the config home before save), then moved on save to:
 
 ```
 ${XDG_CONFIG_HOME:-$HOME/.config}/explore/calibration/<model-slug>-<UTC timestamp>.md
