@@ -55,6 +55,52 @@ Either lane, one executor at a time per plan.
 
 **Queued plans run on the critical path — one worktree each.** When several plans are dispatch-ready, first order the queue: dependency edges, then priority, then leverage (`delegation.md` "Big queues run on the critical path"). Then parallelize the *independent* ones in that order: no dependency edges between them in `plans/README.md`, and pairwise-disjoint in-scope paths. Each gets its own executor in its own worktree/branch (worktree path `<plan-id>-<model>`, per the labeling rule in `delegation.md`), CLI lanes staffed first (quota preservation), total concurrency bounded by the `--depth` cap. Overlapping scope or a dependency edge → sequence those; when in doubt, sequence. Reviews are rendered serially by the advisor as each executor reports — dispatch parallelizes, judgment doesn't.
 
+### Project staffing record
+
+A per-project record of **which models the orchestrator uses as Executor and Verifier for this repo** — one ask, persisted, then read silently on every later run. It does **not** pin a model to a plan (an explicit `--execute-level <plan:model>` pin always wins); it replaces the **default** staffing for the two roles the rung table names ("Rung staffing with the roster" in `delegation.md`), so a project that prefers, say, glm-5.2 as executor and opus-5 as verifier records that once instead of restating it per dispatch. The record is consulted during recon (Phase 1 — see SKILL.md) and the chosen ids flow into every later dispatch/verifier pick unless overridden.
+
+- **(a) TRIGGER.** During recon, look for a recorded staffing block before any dispatch. Search order, stop at the first hit:
+
+  1. **Linked Knoxville vault** → `agents/project-staffing.md` (read via the `docs_*` tools — a vault-linked repo already routes its docs there; `references/init.md` "Knoxville handoff").
+  2. **Repo** → the explore-managed marker block in `AGENTS.md` (or `CLAUDE.md`, its symlink — the `<!-- explore:begin -->` … `<!-- explore:end -->` block from `references/init.md`).
+  3. **Harness memory** → `MEMORY.md` (or the host's equivalent persistent-note surface), under a clearly labelled `## explore: project staffing` heading.
+
+  If a block is found, parse executor + verifier ids, the recorded roster hash, and the date; skip the ask. If none is found and this is the plugin's first invocation for the project, proceed to (b).
+
+- **(b) THE ASK.** When no record exists **and the harness exposes a structured question tool** (`AskUserQuestion` on Claude Code — max 4 options per question per `references/setup.md` "Question mechanics"), ask **one** `AskUserQuestion` carrying two questions, in this order:
+
+  1. **Executor** — which model runs `--execute-level` dispatches for this repo.
+  2. **Verifier** — which model runs the independent second-opinion / judge-panel review for this repo.
+
+  Each question's options = the **top-4 eligible roster models ranked by Intelligence** (ties broken by higher Taste, then higher Cost — the same order as the `plan` role in `references/setup.md` "Token optimization (OMP-style roles)"), with **labels carrying the lane and the C/I/T triple** (e.g. `gpt-5.6-sol · codex · 5/8/8`). The **current rung-staffing default** for that role (the `delegation.md` "Rung staffing with the roster" table — Executor = the executor row; Verifier = the second-opinion default) is listed **first and marked `(Recommended)`**. If the eligible roster has fewer than four models, offer what exists — never pad with invented ids (the single-candidate rule in `references/setup.md` applies when only one eligible model exists).
+
+  **Non-interactive runs skip the ask** — a harness with no structured question tool, a `--code-mode=no` chat run, a piped/non-TTY session, or any flag that suppresses questions: use the rung defaults, note "staffing: defaulted (non-interactive)" in the run record, and continue. **Never block on the ask.** The ask is a single turn; once answered it is never re-asked unless (d) invalidates it.
+
+- **(c) PERSIST.** Write the record to the **first writable slot in the search order** — reconcile, never clobber:
+
+  - **Vault-linked** → `agents/project-staffing.md` via the `docs_*` tools (create the file if absent; update in place if present — never duplicate).
+  - **Else repo** → the `AGENTS.md` explore-managed marker block (inside `<!-- explore:begin -->` … `<!-- explore:end -->` — `references/init.md`); if no `AGENTS.md`/block exists yet, create the file with the marker block only if `--init` would own it, otherwise fall through.
+  - **Else harness memory** → `MEMORY.md` (or host equivalent), under `## explore: project staffing`.
+
+  Record five fields: **executor**, **verifier**, **lane + model ids** (the dispatchable id for each, per `references/setup.md` Step 5), **date** (ISO-8601), and a **roster hash** — the sha256 of the `roster.json` bytes (the file at `${XDG_CONFIG_HOME:-$HOME/.config}/explore/roster.json` when a valid one exists; otherwise the shipped `references/model-roster.md` table rendered to its canonical text), first **12 hex chars** only, so a roster rewrite invalidates the record without re-asking on every run.
+
+- **(d) INVALIDATION.** Re-ask (b) when **either** the recorded roster hash no longer matches the current roster's hash, **or** a recorded model id is no longer in the effective roster (`references/delegation.md` "User roster override"). On invalidation, re-ask once and overwrite the record in place. A run that can't re-ask (non-interactive) falls back to rung defaults and notes the invalidation in the run record — it does **not** silently keep a stale pin.
+
+- **(e) PRECEDENCE.** An explicit `--execute-level <plan:model>` pin **always wins** over the record's Executor, for that plan only; the record only replaces the **default** staffing the orchestrator would have chosen otherwise. The Verifier record is advisory to the orchestrator's second-opinion dispatch (the orchestrator may still widen to a judge panel on severity — `closing-the-loop.md` "The judge panel"). A `--model=<model>` global flag likewise wins over the record's Executor for the run.
+
+- **(f) Format.** The record is a small fenced block so a recon read can lift it whole:
+
+  ```markdown
+  ## explore: project staffing
+  - Executor: gpt-5.6-sol (codex) · 5/8/8
+  - Verifier: opus-5 (claude-code) · 6/8/8
+  - Date: 2026-08-16
+  - Roster hash: a1b2c3d4e5f6
+  - Note: first ask, persisted; invalidate on roster-hash or model-id drift.
+  ```
+
+  An existing block is **updated in place, never duplicated** — a second `## explore: project staffing` heading in the same file is a bug; reconcile to the first.
+
 The executor brief — either lane: the subagent prompt, or the CLI run's prompt — must contain:
 
 1. **The full plan file text, inlined.** The worktree contains only committed files — if `plans/` is uncommitted, the executor can't read it. Never assume; always inline.
