@@ -61,7 +61,7 @@ A probe that errors, stalls, or runs past **5 minutes** (inside the lane doctrin
 
 **1 small design probe per model** — name and shape a tiny API, or a small set of error messages — scored 1–10 by the session model against a short rubric on naming, shape, and copy quality.
 
-The rubric is **anchored to the shipped roster by pointer**. Its anchors are `fable-5` (high), `gpt-5.6-sol` (upper-middle), and `glm-5.2 xhigh` (middle), and the judge **reads their current scores from `references/delegation.md` "The roster" at run time** — the numbers are never copied into this file. Say which anchor the result sits nearest, and why.
+The rubric is **anchored to the shipped roster by pointer**. Its anchors are `fable-5` (high), `gpt-5.6-sol` (upper-middle), and `glm-5.2 xhigh` (middle), and the judge **reads their current scores from `references/model-roster.md` at run time** — the numbers are never copied into this file. Say which anchor the result sits nearest, and why.
 
 A failed, stalled, or over-cap probe leaves the axis `null`, by the same rule as above.
 

@@ -21,6 +21,10 @@ object; --provider both nests {"claude": {...}, "codex": {...}}. Fields:
   weekly_reset_min, checked_at
 `session_*` is the rolling window (Claude 5h / Codex primary), `weekly_*` the
 long window (Claude 7d / Codex secondary). pct = percent USED, 0-100.
+Claude ok:true results additionally carry `weekly_scoped` when the free OAuth
+usage surface reports per-model-class weekly caps (e.g.
+{"fable": {"pct", "reset_min", "active"}}) — supplementary and fail-open:
+absent when that surface is unavailable, never a probe failure.
 
 The four quota fields are `null` whenever the probe has no trustworthy number
 (every ok:false result, and any window the provider did not report) — never a
@@ -159,6 +163,7 @@ CLAUDE_HDR_5H_PCT = "anthropic-ratelimit-unified-5h-utilization"
 CLAUDE_HDR_5H_RESET = "anthropic-ratelimit-unified-5h-reset"
 CLAUDE_HDR_7D_PCT = "anthropic-ratelimit-unified-7d-utilization"
 CLAUDE_HDR_7D_RESET = "anthropic-ratelimit-unified-7d-reset"
+CLAUDE_OAUTH_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 CLAUDE_OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
 CLAUDE_OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 CLAUDE_OAUTH_SCOPE = " ".join([
@@ -371,7 +376,7 @@ def claude_usage(allow_refresh: bool) -> dict:
         ) if value is None]
         if missing:
             return result("claude", False, f"schema_error: missing {', '.join(missing)}")
-        return result(
+        out = result(
             "claude", True,
             _hdr(resp_headers, CLAUDE_HDR_STATUS) or "unknown",
             session_pct=session_pct,
@@ -379,7 +384,67 @@ def claude_usage(allow_refresh: bool) -> dict:
             weekly_pct=weekly_pct,
             weekly_reset_min=weekly_reset_min,
         )
+        scoped = _claude_scoped_weekly(access)
+        if scoped is not None:
+            out["weekly_scoped"] = scoped
+        return out
     return result("claude", False, "unreachable")
+
+
+def _claude_scoped_weekly(access: str) -> dict | None:
+    """Model-class weekly buckets (e.g. Fable) from the free OAuth usage surface.
+
+    GET /api/oauth/usage returns the same `limits[]` the Claude Code /usage
+    screen renders; `kind: "weekly_scoped"` rows carry a per-model-class weekly
+    cap that the unified-* response headers never expose (a Fable request at
+    its cap just 429s with no utilization headers — observed live 2026-08-16).
+    Returns {"<class>": {"pct": int, "reset_min": int|None, "active": bool}}
+    keyed by lowercased model display name, or None when the surface is
+    unavailable or unparseable — supplementary data, so any failure is
+    fail-open None and never turns an ok:true probe into a failure.
+    """
+    headers = {
+        "Authorization": f"Bearer {access}",
+        "anthropic-beta": CLAUDE_API_HEADERS["anthropic-beta"],
+        "User-Agent": CLAUDE_API_HEADERS["User-Agent"],
+    }
+    try:
+        status, _, body = http("GET", CLAUDE_OAUTH_USAGE_URL, headers)
+        if status != 200:
+            return None
+        limits = json.loads(body).get("limits")
+        if not isinstance(limits, list):
+            return None
+        scoped: dict = {}
+        for row in limits:
+            if not isinstance(row, dict) or row.get("kind") != "weekly_scoped":
+                continue
+            name = (((row.get("scope") or {}).get("model") or {}).get("display_name"))
+            pct = row.get("percent")
+            if not isinstance(name, str) or not isinstance(pct, (int, float)):
+                continue
+            scoped[name.lower()] = {
+                "pct": int(pct),
+                "reset_min": _iso_reset_min(row.get("resets_at")),
+                "active": bool(row.get("is_active")),
+            }
+        return scoped or None
+    except (*NETWORK_ERRORS, ValueError, TypeError, AttributeError):
+        return None
+
+
+def _iso_reset_min(value) -> int | None:
+    """Minutes until an ISO-8601 reset timestamp; None when absent/invalid."""
+    if not isinstance(value, str):
+        return None
+    try:
+        from datetime import datetime, timezone
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0, int((dt - datetime.now(timezone.utc)).total_seconds() // 60))
+    except ValueError:
+        return None
 
 
 # ---------- codex provider ----------

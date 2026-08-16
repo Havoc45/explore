@@ -153,7 +153,7 @@ explore --setup-plugin
 
 An interactive wizard, harness-agnostic. It detects your harness and the CLIs installed beside it, then asks: **mode** (native-only or multi-lane) → **lanes + billing** (subscription or pay-per-token, per lane) → **models** per lane → **Cost/Intelligence/Taste weights**, either from the shipped defaults, typed in by hand, or calibrated against your real models with your explicit consent.
 
-Answers persist to `${XDG_CONFIG_HOME:-$HOME/.config}/explore/roster.json` (`~/.config/explore/` by default) — outside the plugin directory, so it survives plugin updates, is shared by every harness on the machine, and is never routed to a docs vault. Skipping setup costs nothing: the shipped roster in `skills/explore/references/delegation.md` stays the zero-config fallback.
+Answers persist to `${XDG_CONFIG_HOME:-$HOME/.config}/explore/roster.json` (`~/.config/explore/` by default) — outside the plugin directory, so it survives plugin updates, is shared by every harness on the machine, and is never routed to a docs vault. Skipping setup costs nothing: the shipped roster in `skills/explore/references/model-roster.md` stays the zero-config fallback.
 
 ## How it works
 

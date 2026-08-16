@@ -1,6 +1,6 @@
 # First-run setup (`--setup-plugin`) — the wizard
 
-`--setup-plugin` runs an interactive **wizard** that produces one artifact: a persisted **roster** — the host harness, the enabled dispatch lanes and their billing, the eligible models, and each model's Cost/Intelligence/Taste weights — written to a global config home outside every harness's plugin directory. Every later run loads that roster and treats it as **authoritative when it exists and validates**; the shipped defaults in `references/delegation.md` "The roster" apply when no valid roster file exists **or when a valid roster leaves no locally usable lane** ("Cross-harness loading" below).
+`--setup-plugin` runs an interactive **wizard** that produces one artifact: a persisted **roster** — the host harness, the enabled dispatch lanes and their billing, the eligible models, and each model's Cost/Intelligence/Taste weights — written to a global config home outside every harness's plugin directory. Every later run loads that roster and treats it as **authoritative when it exists and validates**; the shipped defaults in `references/model-roster.md` apply when no valid roster file exists **or when a valid roster leaves no locally usable lane** ("Cross-harness loading" below).
 
 **When it runs.** Only when the user passes `--setup-plugin`. It is a **standalone action** that **bypasses the phased workflow entirely** — no recon, no exploration, no vetting, no documentation or plan output; only the wizard runs. When `--setup-plugin` arrives alongside other action flags, run setup only, then end the run, telling the user in one line to re-invoke the other flags.
 
@@ -93,7 +93,7 @@ The chosen set per lane is that lane's **roster candidates**. Record each candid
 
 One question, three paths.
 
-**defaults** — score each candidate from the shipped table in `references/delegation.md` "The roster", read there at run time.
+**defaults** — score each candidate from the shipped table in `references/model-roster.md`, read there at run time.
 
 - **Alias mapping rule:** match candidates to shipped rows **by model family, not string equality** — the shipped rows are display names (`fable-5`, `glm-5.2 xhigh`) while candidates are dispatchable ids (`fable`, `openrouter/z-ai/glm-5.2`). When a mapping is ambiguous, **ask the user** rather than guess.
 - An unmatched candidate gets **all three axes `null`** and provenance `unscored`, with a one-line warning that routing staffs unscored models conservatively — worker rung only, never user-facing work.
