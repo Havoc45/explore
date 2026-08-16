@@ -19,6 +19,14 @@
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/herdr-detect.sh\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/companion-detect.sh\""
+          }
+        ]
       }
     ]
   }

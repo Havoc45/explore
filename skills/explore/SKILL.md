@@ -34,7 +34,7 @@ Invoked as `explore [flags] ["<description>"]`. With **no action flag**, it expl
 | Flag | Does | Output / reference |
 |---|---|---|
 | *(none)* | Explore → chart → document the architecture | `docs/system-design-reference/` · `references/system-design-reference.md` |
-| `--improve` | Audit, prioritize, and write plans — **seeded by the ADRs** from exploration | `plans/` · `references/audit-playbook.md`, `references/plan-template.md` |
+| `--improve` | Audit, prioritize, and write plans — **seeded by the ADRs** from exploration; a program-scale ask redirects to wayfinder when present (`## Companion plugins`) | `plans/` · `references/audit-playbook.md`, `references/plan-template.md` |
 | `--plan-once "<description>"` | Skip the audit; investigate just enough and write one plan for a known task | `plans/` · `references/plan-template.md` |
 | `--security` | Audit + plan, **security category only** | `plans/` · `references/audit-playbook.md` §2 |
 | `--review=<plan-file>` | Critique an existing plan against the template and tighten it | edits that plan · `references/plan-template.md` |
@@ -224,6 +224,16 @@ The mirror is **always compressed natively**, independent of the `--caveman` fla
 Three read-only analyzers ship under `scripts/` (in a plugin install, `${CLAUDE_PLUGIN_ROOT}/skills/explore/scripts/`): `project_architect.py` (pattern + layer-violation seeds), `dependency_analyzer.py` (coupling/circular/outdated seeds), `architecture_diagram_generator.py` (first-cut Mermaid). They mechanically extract a first pass; you **judge and curate** — their output is leads to verify against the code, never content to paste. Run them to stdout and read the result; only direct `--output` into a directory this skill owns. Pure-stdlib Python 3, no install. If one errors, fall back to reading by hand.
 
 One optional Node helper also ships there: `mermaid-verify.mjs` — point it at the Markdown you wrote (`node mermaid-verify.mjs docs/system-design-reference/*.md`) to parse, render, and lint every diagram before committing. It needs `npm i mermaid jsdom`, so it's opt-in; when those aren't available, verify diagrams in the live editor instead (see `references/system-design-reference.md`).
+
+## Companion plugins
+
+A SessionStart hook (`hooks/companion-detect.sh`) reads the harness plugin registry and announces which companion plugins are installed. Each one below switches a boost **on when present, silently off when absent** — the skill never installs, and never invokes, a plugin that isn't there.
+
+- **i-have-adhd — operator-UX accommodation.** When the plugin is installed, invoke the **i-have-adhd** skill **once at session open** (the hook's detection line carries the instruction), then continue the run normally. Absent → nothing.
+- **caveman — cavecrew agents staff the worker tier.** When the plugin is installed, its `cavecrew-investigator` and `cavecrew-reviewer` agents are staffable by worker-tier native units (compressed returns ≈60% smaller for orchestrator ingestion); `cavecrew-builder` is not an executor lane. Doctrine: `references/delegation.md` "The org chart" (Staffing rules).
+- **mattpocock-skills — wayfinder redirect for `--improve`.** When the request is a **major improvement program or a greenfield start** — operator words like "from scratch", a roadmap-scale ask — and the wayfinder skill exists, invoke **wayfinder instead** and print one line naming the redirect. Ambiguous whether the ask is program-scale → one-line suggestion, never a question.
+- **Close-out — handoff before context rot.** When session context nears ~200k tokens, suggest a close-out in one line. On close-out — suggested or operator-invoked — run **mattpocock-skills:handoff** when present (else write a plain handoff file to the OS temp dir), and write the handoff pointer into **every present surface** — harness memory (`MEMORY.md`), the Knoxville vault when linked, and the `AGENTS.md` explore-managed block — so the next session loads it first.
+- **knoxville** — already integrated (Hard Rule 1 vault routing); named in the detection line only.
 
 ## Platform adaptation
 
