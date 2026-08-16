@@ -92,7 +92,10 @@ LIST="$(printf '%s' "$OUT" | awk 'NF { printf "%s%s", (seen ? ", " : ""), $0; se
 
 LINE="explore companions: $LIST — boosts active per SKILL.md \"Companion plugins\""
 if has i-have-adhd; then
-  LINE="$LINE; i-have-adhd present → invoke the i-have-adhd skill once now."
+  # SKILL.md sets disable-model-invocation: true — the model can never invoke it.
+  # Activation is user-owned: /i-have-adhd per session, or the always-on flag
+  # file ~/.claude/.i-have-adhd-always (read by the plugin's own SessionStart hook).
+  LINE="$LINE; i-have-adhd present (user-invoked: /i-have-adhd, or always-on via ~/.claude/.i-have-adhd-always)."
 fi
 printf '%s\n' "$LINE"
 exit 0
