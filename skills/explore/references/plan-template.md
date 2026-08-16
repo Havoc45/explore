@@ -108,6 +108,9 @@ executor's environment. Skip the section otherwise.)
 - Skills the executor should invoke if available, and for what:
   "use `vercel-react-best-practices` when writing the memoization in step 3".
 - Reference docs worth reading before starting, by path or URL.
+- When `optimizations.context_architecture` is enabled, deferred-fragment
+  pointers for contingencies off the common path (see "Deferred fragments" in
+  the template below).
 
 ## Scope
 
@@ -127,6 +130,23 @@ executor's environment. Skip the section otherwise.)
 - Branch: `advisor/NNN-<slug>` (or the repo's branch-naming convention if one is evident)
 - Commit per step or per logical unit; message style: <match repo, e.g. conventional commits — include an example from `git log`>
 - Do NOT push or open a PR unless the operator instructed it.
+
+## Deferred fragments
+
+(Optional — include only when the machine config enables
+`optimizations.context_architecture`; omit the section otherwise. Mechanism:
+`references/context-architecture.md` "Deferred fragments in plans".)
+
+Situation → fragment pointer pairs for contingencies the executor might hit
+but the happy path won't. The executor pulls the fragment on encounter instead
+of the plan inlining every branch:
+
+- wrapper/transport misbehaves → `references/delegation.md` "Stale-transport
+  failure shapes and refresh"
+- <situation specific to this plan> → <fragment path or path §section>
+
+Pointer wording carries the trigger; the fragment stays in its one
+authoritative home — never copied into the plan.
 
 ## Steps
 

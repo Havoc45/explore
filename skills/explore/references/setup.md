@@ -15,7 +15,7 @@ Rules that hold on both paths:
 
 - **One decision per question.** A question that bundles two decisions gets split into two.
 - **Overflow rule.** When a choice has more options than the tool can hold (more than 4 supplied options on Claude Code — the UI's own "Other" is added on top and never consumes a slot), either split it into consecutive questions with "more choices…" as the last option, or drop that one question to a plain-text numbered list. **Never silently truncate the option set** — the user must be able to reach every option.
-- **Single-candidate rule** (the overflow rule's mirror). Structured question tools can require **at least 2 supplied options** (AskUserQuestion rejects a 1-option question outright — live-hit 2026-07-27). A choice with exactly one known-good candidate still gets a selector: pair the candidate with the second option **"choose a different id from the inventory shown above"** (free-text entry) — a real alternative action, never a padded or invented model id. Only when there is no inventory to choose from either is the choice stated as the taken path in the response and confirmed at the summary (Step 7).
+- **Single-candidate rule** (the overflow rule's mirror). Structured question tools can require **at least 2 supplied options** (AskUserQuestion rejects a 1-option question outright — live-hit 2026-07-27). A choice with exactly one known-good candidate still gets a selector: pair the candidate with the second option **"choose a different id from the inventory shown above"** (free-text entry) — a real alternative action, never a padded or invented model id. Only when there is no inventory to choose from either is the choice stated as the taken path in the response and confirmed at the summary (Step 8).
 - **Consent and cost are plain full sentences** (auto-clarity), on every harness, even where the surrounding prose is terse.
 - **Render-before-ask.** Any list or table the user needs in order to answer — a lane's model inventory, the C/I/T table, the Step-7 summary — is rendered in the assistant's **own response text**, never left inside a raw tool result (harness UIs collapse those) and never only *referenced* ("see above"). **Harness reality (live-hit three rounds): response text sandwiched between tool calls in one turn may never be shown** — a render followed by a structured question call in the same turn loses the render. So a render and its question are split **across the turn boundary, never across a tool call**: the response **ends** with the render plus the inviting line — worded exactly: *reply with your picks directly, or reply anything (e.g. "ask") to open the selectors* — if the reply already carries the answer, accept it (fast path); otherwise open the **structured selector as the next turn's first action**, directly under the render in the transcript. **No exceptions — settled by experiment (2026-07-27, four live failures including a dedicated attempt on both the first and last gates): a selector called in the same turn as a render always loses the render**, wherever it sits in the turn. Auto-opening a selector under a visible render is impossible on this harness; the turn boundary is the only mechanism that guarantees the render displays. Every render-dependent question therefore uses the invite flow above, first and last included. Self-contained questions (billing, consent) use the structured tool directly. Plain-text numbered questions remain the no-structured-tool fallback.
 
@@ -71,7 +71,7 @@ An optional optimization profile that pins three **roles** onto the roster the w
 One self-contained consent question opens the step — **enable the optimization profile, or skip it** (self-contained, so the structured tool is used directly, no render needed):
 
 - **skip** — record nothing; the step is over and the roster saves exactly as it would have without this step. The default.
-- **enable** — ask the three questions below, then write the `optimizations` block at save time ("Persistence" below).
+- **enable** — ask the three questions below, then write the `optimizations.omp_roles` block at save time ("Persistence" below).
 
 **Re-run prefill (this step's one exception to the generic rule).** When the existing roster already carries `optimizations.omp_roles`, this step's question does **not** default to the saved answers. Its text shows *"optimization profile applied on `<applied_at>` — re-apply?"* with **re-apply** / **leave as-is** / **remove**; **leave as-is** is the default, and the wizard **never silently re-applies**. Only an explicit re-apply refreshes `applied_at` and the answers.
 
@@ -89,7 +89,20 @@ Where the mapping leaves a single candidate, the single-candidate rule applies (
 
 **Completion criterion:** the step is recorded as skipped, or three role answers (a lane + dispatchable model id each) plus the two boolean toggles are recorded, carrying the user's explicit enable consent.
 
-## Wizard Step 5 — Models per lane
+## Wizard Step 5 — Context architecture
+
+An optional **context-architecture** profile — the deliberate fragment baseline, orientation pass, deferred-fragment pulls, spill, and touch-driven refresh described in `references/context-architecture.md`. It changes only how the orchestrator composes and records its own context; every phase, routing rule, and output is unchanged, and absent the key the skill behaves exactly as before.
+
+One self-contained consent question is the whole step — **enable the context architecture, or skip it** (self-contained, so the structured tool is used directly, no render needed):
+
+- **skip** — record nothing; the roster saves exactly as it would have without this step. The default.
+- **enable** — nothing further is asked (there is nothing to configure — the disciplines are fixed); the wizard writes `optimizations.context_architecture` at save time ("Persistence" below).
+
+**Re-run prefill (the same exception pattern as Step 4).** When the existing roster already carries `optimizations.context_architecture`, this step's question does **not** default to the saved answer. Its text shows *"context architecture applied on `<applied_at>` — re-apply?"* with **re-apply** / **leave as-is** / **remove**; **leave as-is** is the default, and the wizard **never silently re-applies**. Only an explicit re-apply refreshes `applied_at`.
+
+**Completion criterion:** the step is recorded as skipped, or enabled carrying the user's explicit consent.
+
+## Wizard Step 6 — Models per lane
 
 Take the inventory for each enabled lane with **verified commands only**:
 
@@ -114,7 +127,7 @@ The chosen set per lane is that lane's **roster candidates**. Record each candid
 
 **Completion criterion:** every enabled lane has at least one candidate recorded by dispatchable id.
 
-## Wizard Step 6 — C/I/T values
+## Wizard Step 7 — C/I/T values
 
 One question, three paths.
 
@@ -131,7 +144,7 @@ After any path: one response ends with the rendered table — **model / lane / C
 
 **Completion criterion:** every candidate carries three axis values (integer or `null`) plus a provenance, and the user has confirmed the table.
 
-## Wizard Step 7 — Summary, confirm, persist
+## Wizard Step 8 — Summary, confirm, persist
 
 One response ends with the full setup rendered — host, mode, lanes with billing, the complete roster table with provenance, and the config path that will be written — plus the inviting line: *reply save / redo <step> / discard directly, or reply anything (e.g. "ask") to open the selector*. The selector opens on a non-answer reply, sitting under the render; the user decides against the roster they can actually see.
 
@@ -169,7 +182,7 @@ One response ends with the full setup rendered — host, mode, lanes with billin
 
 **Field types.** `cost`, `intelligence`, and `taste` are each an **integer 1–10 or `null`**. `null` means that axis is unscored — an unmatched default, or a failed calibration probe. A model with any `null` axis is **staffed conservatively — worker rung only, never user-facing work** — until the user fills it in (a manual edit, or a `--setup-plugin` re-run). `provenance` is one of `default` | `manual` | `calibrated` | `unscored`, per row: `unscored` when all three axes are `null`, otherwise the path that produced the values.
 
-**The `optimizations` key is OPTIONAL — the schema stays v1.** Written only when the user explicitly enables the profile in Step 4, it is one additive top-level key beside `roster`:
+**The `optimizations` key is OPTIONAL — the schema stays v1.** Written only when the user explicitly enables a profile in Step 4 or Step 5, it is one additive top-level key beside `roster`, holding whichever of the two blocks the user enabled:
 
 ```json
 "optimizations": {
@@ -178,11 +191,15 @@ One response ends with the full setup rendered — host, mode, lanes with billin
     "roles": { "plan": "<model>", "slow": "<model>", "smol": "<model>" },
     "prewalk": true,
     "plan_yolo": false
+  },
+  "context_architecture": {
+    "applied_at": "<ISO-8601 timestamp>",
+    "enabled": true
   }
 }
 ```
 
-Each role value is a **dispatchable model id from the roster just saved**, resolving to its lane + model at run time (`references/delegation.md` "Role profile"). **Readers must ignore unknown keys, this one included**: a reader that pre-dates the profile treats the file as an ordinary v1 roster, and a roster without `optimizations` is unchanged-valid — nothing about loading, validation, or cross-harness fallback differs. `applied_at` is what Step 4's re-run prefill shows ("optimization profile applied on `<applied_at>` — re-apply?").
+Each block is independent: either may be present without the other, and each is written only on that step's explicit enable. Each role value is a **dispatchable model id from the roster just saved**, resolving to its lane + model at run time (`references/delegation.md` "Role profile"); `context_architecture` carries no configuration — `enabled: true` plus its `applied_at` is the whole profile (`references/context-architecture.md`). **Readers must ignore unknown keys, these included**: a reader that pre-dates the profiles treats the file as an ordinary v1 roster, and a roster without `optimizations` is unchanged-valid — nothing about loading, validation, or cross-harness fallback differs. Each block's `applied_at` is what its step's re-run prefill shows (Step 4: "optimization profile applied on `<applied_at>` — re-apply?"; Step 5: "context architecture applied on `<applied_at>` — re-apply?").
 
 **Lane ids are harness-qualified** — `claude-code`, `codex`, `opencode`, `pi`, … — never a bare `native`. At load time the lane whose `id` equals the current host dispatches natively; other lanes dispatch through their CLI when it is present; a lane whose CLI is absent on this machine is skipped with a one-line note.
 
@@ -197,6 +214,6 @@ Each role value is a **dispatchable model id from the roster just saved**, resol
 - A `schema` **greater** than this reference's known version → **do not rewrite the file**; tell the user to re-run setup on the newer plugin.
 - **Unknown keys are preserved on rewrite.**
 
-**Re-run prefill.** When a valid roster already exists, every wizard question defaults to the saved answer — with one deliberate exception: Step 4's optimization-profile question shows the applied-on date and asks *re-apply?* rather than silently re-applying (Step 4).
+**Re-run prefill.** When a valid roster already exists, every wizard question defaults to the saved answer — with two deliberate exceptions of one pattern: Step 4's optimization-profile question and Step 5's context-architecture question each show their applied-on date and ask *re-apply?* rather than silently re-applying (Steps 4 and 5).
 
 **Calibration transcripts** land beside the roster under `calibration/` (see `references/roster-calibration.md`), moved in from the staging directory at save time.
