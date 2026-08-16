@@ -11,6 +11,91 @@ All notable changes to the `explore` plugin. This project adheres to
 > only — no prune has been applied yet, and `docs/CHANGELOG-archive.md` is
 > created on the first archival, not before.
 
+## [2.17.0] — 2026-08-16
+
+### Added
+- **Plugin hooks** (plans 021, 022, 027; new `hooks/` shipped in the
+  plugin manifest) — `hooks/model-guard.py` (PreToolUse on `Agent|Task`)
+  mechanically blocks Fable-class and Haiku subagent dispatches, with a
+  per-session `MODEL_GUARD_OK` operator-override protocol;
+  `hooks/herdr-detect.sh` (SessionStart) announces a herdr workspace;
+  `hooks/companion-detect.sh` (SessionStart) announces installed
+  companion plugins (i-have-adhd, caveman, mattpocock-skills with
+  wayfinder/handoff presence, knoxville) — every boost presence-gated,
+  silently off when absent.
+- **herdr dispatch lane** (plan 021; `references/delegation-transports.md`
+  "herdr transport") — pane agents as a third dispatch surface inside a
+  herdr session: split/start/prompt/read shapes, heartbeat state mapping,
+  blocked-equals-operator-surface rule, usagebar token read with
+  `usage_probe.py` fallback. Verified on herdr 0.8.x.
+- **Context architecture, opt-in** (plan 024, operator-approved; new
+  `references/context-architecture.md`) — dsh/cordis disciplines as
+  doctrine: typed context fragments, the Phase 1.5 orientation pass
+  (broad→specific baseline, dedup, budget-then-drop, fragment list in
+  the run record), deferred fragments in plans, model-visible ⟺ logged,
+  spill behind opaque locators, touch-driven refresh. Enabled only by
+  `optimizations.context_architecture` (new consent-only Wizard Step 5;
+  Steps 5–7 renumbered 6–8).
+- **OMP-style token-optimization roles** (plan 023; `references/setup.md`
+  Wizard Step 4) — optional `optimizations.omp_roles` profile pinning
+  `plan`/`slow`/`smol` roles onto the saved roster, with prewalk and
+  plan-yolo toggles; re-runs always ask before re-applying.
+- **Project staffing record** (plan 025;
+  `references/closing-the-loop.md`) — one structured ask on first
+  invocation per project picks Executor + Verifier from the top-4
+  roster models; persisted vault → `AGENTS.md` block → harness memory,
+  invalidated by a 12-hex roster hash; explicit pins always win.
+- **Queued-plans pipeline** (plan 029; `references/closing-the-loop.md`)
+  — parallel execution is the default for ≥3 independent queued plans;
+  a read-only dry-run probe per plan front-loads executor questions
+  before wave 1 (template calibrated against a real historical plan);
+  an AFK question policy auto-approves only recorded non-critical
+  answers and parks majors as `BLOCKED(question)`.
+- **Reconcile housekeeping sweep** (plan 030;
+  `references/closing-the-loop.md`) — merged-PR check on open records,
+  repo-context snapshot, and browser-tab cleanup bounded by the
+  tab-id attribution rule (no record, no close).
+- **Skill-usage observatory** (plan 028; new
+  `skills/explore/scripts/skill_usage.py`) — scans harness transcripts
+  for skill invocations, joins the plugin registry, and writes a
+  skill-usage glossary with lean-context candidates on `--reconcile`;
+  privacy floor (no prompt text), structured failures.
+- **Fable weekly quota read** (`scripts/usage_probe.py`) — claude
+  results now carry `weekly_scoped` per-model-class buckets from the
+  free OAuth usage endpoint (a capped Fable request 429s with no
+  utilization headers; this is the only machine surface).
+- **`--audit` manifest-description drift warning**
+  (`scripts/bump-version.sh`, plan 031) — report-only warning when the
+  seven manifests' description strings diverge; exit semantics
+  unchanged.
+
+### Changed
+- **delegation.md split for per-lane loading** (plan 031) — the
+  verified call shapes, lane quirks, sandbox rules, effort mapping,
+  hang-recovery ladder, chunked dispatch, and stale-transport table
+  moved to new `references/delegation-transports.md` (loaded only for
+  lanes present on the host); `references/delegation.md` (8,205→4,371
+  words) keeps the org chart, roster & routing, and preflight ladder.
+  All version pins land in exactly one home; every cross-reference
+  retargeted. The three Phase-2 lens references are now explicitly
+  subagent-brief material, never read inline by the orchestrator.
+- **opencode wrapper v1.5.0** (plan 026;
+  `skills/explore/scripts/opencode-mcp.mjs`) — stall watchdog:
+  `opencode_status`/`opencode_wait` report `possible_hang`,
+  `in_flight_age_s`, and `pending_permission` via the directory-scoped
+  permission-queue probe (the out-of-root read hang class), tunable via
+  `OPENCODE_STALL_WARN_S`; report-only, never auto-replies.
+  Out-of-root-read doctrine and the harvest-zombies-first hang-recovery
+  ladder documented alongside.
+- **Model roster split** — scores, per-model calibration, and the
+  tried-but-unrostered record live in `references/model-roster.md`;
+  `--improve` redirects program-scale asks to wayfinder when installed;
+  a ~200k-token close-out suggestion writes the handoff pointer to
+  every present surface.
+- Repo hygiene (plan 031): stray `google-cloud-sdk/` bytecode junk
+  removed and explicitly gitignored; CHANGELOG prune policy added
+  (policy only).
+
 ## [2.16.7] — 2026-07-29
 
 ### Fixed
