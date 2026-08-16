@@ -172,6 +172,10 @@ Process what happened since the last session. Read `plans/README.md` and every p
 
 Finish with a short report: what's verified done, what was refreshed, what's rejected, and what's executable right now.
 
+### Skill-usage glossary (reconcile step)
+
+On `--reconcile` (and session close-out), run `python3 skills/explore/scripts/skill_usage.py --project <harness project dir>` and write/update the skill-usage glossary — vault `agents/skills-glossary.md` when Knoxville-linked, else the `AGENTS.md` explore-managed block. Columns: skill | plugin | status (**active** / **unused-30d** / **unused-90d** / **name-only-candidate**) | last invoked | note. Thresholds (30/90 days) configurable in the glossary header. List **lean-context candidates** in the reconcile summary — one line each naming the concrete action (disable in settings / trim description to name-only / uninstall), never auto-applied. The skill never edits other plugins or `settings.json` — the update-config skill applies changes on operator ask.
+
 ---
 
 ## `--issues` — publish plans as GitHub issues
