@@ -11,6 +11,12 @@ All notable changes to the `explore` plugin. This project adheres to
 > only — no prune has been applied yet, and `docs/CHANGELOG-archive.md` is
 > created on the first archival, not before.
 
+## [2.17.1] — 2026-10-06
+
+### Changed
+- Follow mattpocock-skills 1.3.0: read `GLOSSARY.md` / `GLOSSARY-MAP.md`
+  instead of `CONTEXT.md` / `CONTEXT-MAP.md`.
+
 ## [2.17.0] — 2026-08-16
 
 ### Added
